@@ -1,0 +1,16 @@
+easyocr
+transformers
+torch
+torchvision
+datasets
+pillow
+streamlit
+fastapi
+uvicorn
+requests
+pandas
+numpy
+matplotlib
+seaborn
+scikit-learn
+jupyter
