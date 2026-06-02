@@ -1,0 +1,7 @@
+{
+  "model_name": "PubMedBERT",
+  "precision": 0.913689936536718,
+  "recall": 0.9360951142485603,
+  "f1": 0.9247568361167186,
+  "training_time": 311.7517
+}

@@ -1,0 +1,4 @@
+Model,Precision,Recall,F1 Score,Training Time (mins),Rank
+PubMedBERT,0.9137,0.9361,0.9248,5.2,1
+BioBERT,0.9047,0.9385,0.9213,3.25,2
+ClinicalBERT,0.8506,0.8586,0.8546,1.49,3

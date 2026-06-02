@@ -216,3 +216,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Model files — too large for GitHub
+results/models/
+*.bin
+*.safetensors
+*.pt
+*.pth

@@ -1,0 +1,7 @@
+{
+  "model_name": "ClinicalBERT",
+  "precision": 0.8506445672191528,
+  "recall": 0.858550185873606,
+  "f1": 0.8545790934320073,
+  "training_time": 89.1591
+}

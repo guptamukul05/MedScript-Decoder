@@ -1,0 +1,32 @@
+{
+  "best_model": "PubMedBERT",
+  "best_f1": 0.9248,
+  "best_precision": 0.9137,
+  "best_recall": 0.9361,
+  "all_models": [
+    {
+      "Model": "PubMedBERT",
+      "Precision": 0.9137,
+      "Recall": 0.9361,
+      "F1 Score": 0.9248,
+      "Training Time (mins)": 5.2,
+      "Rank": 1
+    },
+    {
+      "Model": "BioBERT",
+      "Precision": 0.9047,
+      "Recall": 0.9385,
+      "F1 Score": 0.9213,
+      "Training Time (mins)": 3.25,
+      "Rank": 2
+    },
+    {
+      "Model": "ClinicalBERT",
+      "Precision": 0.8506,
+      "Recall": 0.8586,
+      "F1 Score": 0.8546,
+      "Training Time (mins)": 1.49,
+      "Rank": 3
+    }
+  ]
+}
