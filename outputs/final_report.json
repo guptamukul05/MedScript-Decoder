@@ -1,0 +1,51 @@
+{
+  "generated_at": "2026-06-03 11:44:07",
+  "disclaimer": "\u26a0\ufe0f This report is AI-generated. Always consult your doctor.",
+  "medicines": [],
+  "tests_ordered": [
+    "CBC",
+    "blood test"
+  ],
+  "symptoms": [
+    "pain",
+    "fever"
+  ],
+  "diagnoses": [],
+  "report_analysis": {
+    "abnormal": [
+      {
+        "parameter": "hemoglobin",
+        "value": 11.2,
+        "unit": "g/dL",
+        "min": 12.0,
+        "max": 17.0,
+        "status": "LOW"
+      },
+      {
+        "parameter": "tsh",
+        "value": 6.8,
+        "unit": "mIU/L",
+        "min": 0.4,
+        "max": 4.0,
+        "status": "HIGH"
+      }
+    ],
+    "normal": [
+      {
+        "parameter": "creatinine",
+        "value": 0.9,
+        "unit": "mg/dL",
+        "min": 0.6,
+        "max": 1.2,
+        "status": "NORMAL"
+      }
+    ]
+  },
+  "urgency": {
+    "level": "urgent",
+    "color": "\ud83d\udd34",
+    "text": "Consult Doctor Today",
+    "reason": "Critical value detected: ['hemoglobin']"
+  },
+  "drug_interactions": []
+}
