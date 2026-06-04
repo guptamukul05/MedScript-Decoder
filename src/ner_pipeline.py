@@ -1,5 +1,5 @@
 # ner_pipeline.py
-# Rewrote completely for typed/digital Indian prescriptions
+# Complete rewrite for typed/digital Indian prescriptions
 
 import re
 from transformers import AutoTokenizer, AutoModelForTokenClassification, pipeline
@@ -19,30 +19,20 @@ def load_ner_model():
     return ner
 
 
-# ── Detect if prescription is handwritten or typed ────────────────
+# ── Detect prescription type ──────────────────────────────────────
 def detect_prescription_type(text):
-    """
-    Typed prescriptions have consistent patterns.
-    Handwritten OCR output has more noise and inconsistency.
-    """
-    lines         = [l.strip() for l in text.split("\n") if l.strip()]
-    avg_len       = sum(len(l) for l in lines) / max(len(lines), 1)
-    has_bullets   = any(l.startswith(("•", "-", "*", "·")) for l in lines)
-    has_numbers   = any(re.match(r"^\d+[).]\s", l) for l in lines)
-    has_tab_cap   = sum(1 for l in lines
-                        if re.match(r"^(TAB|CAP|SYP|INJ|TAB\.|CAP\.)\s",
-                                    l, re.IGNORECASE))
-    score = 0
-    if avg_len > 20:    score += 2
-    if has_bullets:     score += 2
-    if has_numbers:     score += 2
-    if has_tab_cap > 1: score += 3
+    lines     = [l.strip() for l in text.split("\n") if l.strip()]
+    avg_len   = sum(len(l) for l in lines) / max(len(lines), 1)
+    has_tab   = sum(1 for l in lines
+                    if re.match(r"^(TAB|CAP|SYP|INJ)\s", l, re.IGNORECASE))
+    score     = 0
+    if avg_len > 20: score += 2
+    if has_tab > 1:  score += 3
     return "typed" if score >= 4 else "handwritten"
 
 
-# ── Clean OCR/PDF text ────────────────────────────────────────────
+# ── Clean prescription text ───────────────────────────────────────
 def clean_prescription_text(text):
-    # Remove website/digital prescription maker footers
     footer_patterns = [
         r"Made by Prescription Maker.*",
         r"www\..*\.com.*",
@@ -58,21 +48,273 @@ def clean_prescription_text(text):
     for pat in footer_patterns:
         cleaned = re.sub(pat, "", cleaned,
                          flags=re.IGNORECASE | re.DOTALL)
-
-    # Normalize dashes — "----" becomes single space
-    cleaned = re.sub(r"-{2,}", " ", cleaned)
-
-    # Normalize multiple spaces
     cleaned = re.sub(r" {2,}", " ", cleaned)
-
     return cleaned.strip()
+
+
+# ── Parse timing from natural language ───────────────────────────
+def parse_timing_natural(timing_text):
+    t = timing_text.lower()
+    has_breakfast = "breakfast" in t or "morning" in t
+    has_lunch     = "lunch" in t or "afternoon" in t or "noon" in t
+    has_dinner    = "dinner" in t or "night" in t or "evening" in t
+    has_bedtime   = "bedtime" in t or "bed time" in t or "sleep" in t
+
+    timing = []
+    if has_breakfast: timing.append("Morning (after breakfast)")
+    if has_lunch:     timing.append("Afternoon (after lunch)")
+    if has_dinner:    timing.append("Night (after dinner)")
+    if has_bedtime:   timing.append("At bedtime")
+    if timing:        return timing
+
+    if re.search(r"four\s*times|qid|4\s*times", t):
+        return ["Morning", "Afternoon", "Evening", "Night"]
+    if re.search(r"three\s*times|tds|thrice|tid", t):
+        return ["Morning", "Afternoon", "Night"]
+    if re.search(r"twice|two\s*times|bd|b\.d\.|2\s*puffs.*twice", t):
+        return ["Morning", "Night"]
+    if re.search(r"once|one\s*time|od|o\.d\.", t):
+        return ["Morning"]
+    if re.search(r"bedtime|hs|h\.s\.", t):
+        return ["At bedtime"]
+    if re.search(r"sos|as\s*needed|if\s*needed", t):
+        return ["As needed (SOS)"]
+    return ["As directed by doctor"]
+
+
+# ── Parse frequency ───────────────────────────────────────────────
+def parse_frequency(text):
+    t = text.lower()
+    if re.search(r"four\s*times|qid|4\s*times", t):
+        return "Four times daily"
+    if re.search(r"three\s*times|tds|thrice|tid|3\s*times", t):
+        return "Three times daily (TDS)"
+    if re.search(r"twice|two\s*times|bd|b\.d\.|"
+                 r"breakfast\s+and\s+dinner|"
+                 r"morning\s+and\s+night|"
+                 r"2\s*puffs.*twice", t):
+        return "Twice daily (BD)"
+    if re.search(r"once|one\s*time|od|o\.d\.|once\s*daily", t):
+        return "Once daily (OD)"
+    if re.search(r"sos|as\s*needed|if\s*needed|when\s*required", t):
+        return "SOS (as needed)"
+    if re.search(r"bedtime|hs|h\.s\.|at\s*night\s*only", t):
+        return "Once daily at bedtime"
+    if re.search(r"after\s+(breakfast|lunch|dinner|meal)", t):
+        meals = len(re.findall(r"(breakfast|lunch|dinner|meal)", t))
+        if meals >= 3: return "Three times daily (TDS)"
+        if meals == 2: return "Twice daily (BD)"
+        if meals == 1: return "Once daily (OD)"
+    return "As directed"
+
+
+# ── Extract duration ──────────────────────────────────────────────
+def extract_duration(text):
+    text = re.sub(r"-{2,}", " ", text)
+    patterns = [
+        r"(\d+)\s*(days?|weeks?|months?)",
+        r"[xX×]\s*(\d+)\s*[dD]",
+        r"for\s+(\d+)\s*(days?|weeks?|months?)",
+    ]
+    for pat in patterns:
+        match = re.search(pat, text, re.IGNORECASE)
+        if match:
+            groups = match.groups()
+            num    = groups[0]
+            unit   = groups[1] if len(groups) > 1 and groups[1] else "days"
+            return f"{num} {unit}"
+    return "As directed"
+
+
+# ── Check if line is a medicine line ─────────────────────────────
+def is_medicine_line(line):
+    return bool(re.match(
+        r"^(?:[•\-\*·]|\d+[).\s])?\s*"
+        r"(TAB|Tab|tab|TAS|Tas|CAP|Cap|SYP|Syp|INJ|Inj|"
+        r"DROPS?|Drops?|OINT|SPRAY|Spray|GEL|CREAM)\s+[A-Za-z]",
+        line, re.IGNORECASE
+    ))
+
+
+# ── Check if line contains timing info ───────────────────────────
+def is_timing_line(line):
+    timing_words = [
+        "after", "before", "breakfast", "lunch", "dinner",
+        "morning", "night", "evening", "bedtime", "daily",
+        "twice", "thrice", "once", "puffs", "nostril",
+        "meals", "food", "empty", "stomach", "times"
+    ]
+    line_lower = line.lower()
+    return any(w in line_lower for w in timing_words)
+
+
+# ── Main medicine extraction ──────────────────────────────────────
+def extract_medicine_blocks(text):
+    medicines = []
+    lines     = text.split("\n")
+    i         = 0
+
+    while i < len(lines):
+        line = lines[i].strip()
+
+        if not line:
+            i += 1
+            continue
+
+        # ── Match standard TAB/CAP/SYP line ──────────────────────
+        med_match = re.match(
+            r"^(?:[•\-\*·]|\d+[).\s])?\s*"
+            r"(TAB|Tab|tab|TAS|Tas|CAP|Cap|SYP|Syp|Syr|INJ|Inj|"
+            r"DROPS?|Drops?|OINT|Oint|SPRAY|Spray|GEL|Gel|CREAM|Cream)\s+"
+            r"(.+?)$",
+            line, re.IGNORECASE
+        )
+
+        # ── Match plain spray/drops without form word ─────────────
+        plain_match = None
+        if not med_match:
+            plain_match = re.match(
+                r"^(?:[•\-\*·]|\d+[).\s])?\s*"
+                r"([A-Z][A-Z0-9\s]+?(?:SPRAY|DROPS|CREAM|GEL|OINT"
+                r"|NASAL\s+SPRAY))\s*[-–—]*\s*(.*?)$",
+                line
+            )
+        plain_match = None
+        if not med_match:
+            plain_match = re.match(
+                r"^(?:[•\-\*·]|\d+[).\s])?\s*"
+                r"([A-Z][A-Z0-9\s]+?(?:SPRAY|DROPS|CREAM|GEL|OINT|NASAL\s+SPRAY))"
+                r"\s*[-–—]*\s*(\d+\s*(?:days?|weeks?|months?).*)$",
+                line
+            )
+            if not plain_match:
+                plain_match = re.match(
+                    r"^(?:[•\-\*·]|\d+[).\s])?\s*"
+                    r"([A-Z][A-Z0-9\s]+?(?:SPRAY|DROPS|CREAM|GEL|OINT|NASAL\s+SPRAY))"
+                    r"\s*[-–—]*\s*(.*)$",
+                    line
+                )
+        if med_match or plain_match:
+            if med_match:
+                form     = med_match.group(1).title()
+                raw_rest = med_match.group(2).strip()
+            else:
+                form      = "Spray"
+                drug_name = plain_match.group(1).strip().title()
+                raw_rest  = plain_match.group(2).strip()
+
+                # For plain_match, name is already extracted
+                # Skip the name_dose parsing below
+                duration  = extract_duration(raw_rest)
+                timing_text = raw_rest
+
+                j = i + 1
+                while j < len(lines):
+                    next_line = lines[j].strip()
+                    if not next_line:
+                        j += 1
+                        continue
+                    if is_medicine_line(next_line):
+                        break
+                    if is_timing_line(next_line):
+                        timing_text = next_line
+                        i = j
+                        break
+                    break
+
+                frequency = parse_frequency(timing_text)
+                timing    = parse_timing_natural(timing_text)
+
+                if len(drug_name) > 1:
+                    medicines.append({
+                        "form":      form,
+                        "name":      drug_name,
+                        "dosage":    "As directed",
+                        "frequency": frequency,
+                        "duration":  duration,
+                        "timing":    timing,
+                        "raw":       line
+                    })
+                i += 1
+                continue
+
+            # ── Parse name and dosage from raw_rest ───────────────
+            # raw_rest looks like: "CEPODEM 200 ---- 15 days"
+            # or: "LORFAST AM ---- 15 days"
+            # or: "PANTOCID 40 -- 15 days"
+
+            # Split on dashes separator
+            raw_clean = re.sub(r"-{2,}", " ||| ", raw_rest)
+            parts     = raw_clean.split("|||")
+            name_part = parts[0].strip()
+            rest_part = parts[1].strip() if len(parts) > 1 else ""
+
+            # Try to extract name + dosage number from name_part
+            # e.g. "CEPODEM 200" → name=CEPODEM, dose=200mg
+            # e.g. "LORFAST AM"  → name=LORFAST AM, dose=As prescribed
+            name_dose = re.match(
+                r"^([A-Za-z][A-Za-z0-9\-\/\s]+?)\s+"
+                r"(\d+\.?\d*)\s*(mg|ml|mcg|g|iu|units?|puffs?)?\s*$",
+                name_part
+            )
+
+            if name_dose:
+                drug_name = name_dose.group(1).strip()
+                dosage_n  = name_dose.group(2)
+                dosage_u  = name_dose.group(3) or "mg"
+                dosage    = dosage_n + dosage_u
+            else:
+                drug_name = name_part.strip()
+                dosage    = "As prescribed"
+
+            # Remove any trailing dashes from drug name
+            drug_name = re.sub(r"[-\s]+$", "", drug_name).strip()
+
+            # Duration from rest_part
+            duration = extract_duration(rest_part) if rest_part \
+                       else "As directed"
+
+            # ── Look ahead for timing line ────────────────────────
+            timing_text = rest_part
+            j = i + 1
+            while j < len(lines):
+                next_line = lines[j].strip()
+                if not next_line:
+                    j += 1
+                    continue
+                # Stop if next line is a new medicine
+                if is_medicine_line(next_line):
+                    break
+                # Use if it has timing info
+                if is_timing_line(next_line):
+                    timing_text = next_line
+                    i = j
+                    break
+                break
+
+            frequency = parse_frequency(timing_text)
+            timing    = parse_timing_natural(timing_text)
+
+            if len(drug_name) > 1:
+                medicines.append({
+                    "form":      form,
+                    "name":      drug_name,
+                    "dosage":    dosage,
+                    "frequency": frequency,
+                    "duration":  duration,
+                    "timing":    timing,
+                    "raw":       line
+                })
+
+        i += 1
+
+    return medicines
 
 
 # ── Extract doctor info ───────────────────────────────────────────
 def extract_doctor_info(text):
     info = {}
 
-    # Doctor name
     dr_match = re.search(
         r"(Dr\.?\s+[A-Z][A-Za-z\s\.]+?)(?:\n|M\.B|MBBS|MD|MS|$)",
         text
@@ -82,7 +324,6 @@ def extract_doctor_info(text):
         if len(name) > 4:
             info["doctor_name"] = name
 
-    # Qualification
     qual_match = re.search(
         r"(M\.B\.B\.S\..*?|M\.D\..*?|M\.S\..*?)(?:\n|$)",
         text
@@ -90,7 +331,6 @@ def extract_doctor_info(text):
     if qual_match:
         info["qualification"] = qual_match.group(1).strip()
 
-    # Registration number
     reg_match = re.search(
         r"Reg\.?\s*No\.?\s*[:\-]?\s*([A-Z]{2,5}[-\s]?\d+)",
         text, re.IGNORECASE
@@ -98,14 +338,15 @@ def extract_doctor_info(text):
     if reg_match:
         info["reg_number"] = reg_match.group(1).strip()
 
-    # Phone
-    phone_match = re.search(r"(\d{10}|\d{3}[-\s]\d{8}|\d{2,4}[-\s]\d{7,8})", text)
+    phone_match = re.search(
+        r"(\d{10}|\d{3}[-\s]\d{8}|\d{2,4}[-\s]\d{7,8})",
+        text
+    )
     if phone_match:
         info["phone"] = phone_match.group(1)
 
-    # Clinic/Hospital name
     clinic_match = re.search(
-        r"([A-Z][A-Za-z\s]+(?:Clinic|Hospital|Centre|Center|Medical|Enclave))",
+        r"([A-Z][A-Za-z\s]+(?:Clinic|Hospital|Centre|Center|Medical))",
         text
     )
     if clinic_match:
@@ -118,7 +359,6 @@ def extract_doctor_info(text):
 def extract_patient_info(text):
     info = {}
 
-    # Date
     date_match = re.search(
         r"Date[:\s]+(\d{1,2}\s+\w+\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})",
         text, re.IGNORECASE
@@ -126,25 +366,22 @@ def extract_patient_info(text):
     if date_match:
         info["date"] = date_match.group(1).strip()
 
-    # Patient name — looks for ALL CAPS name on its own line
-    # or after "Patient:" or "Name:"
+    # Patient name — ALL CAPS line or after Patient/Name label
     name_patterns = [
         r"(?:Patient|Name)\s*[:\-]\s*([A-Za-z\s]+?)(?:\n|Age|$)",
-        r"^([A-Z][A-Z\s]{3,30})$",   # All caps line like VISHAL GUPTA
+        r"^([A-Z][A-Z\s]{3,30})$",
     ]
     for pat in name_patterns:
         match = re.search(pat, text, re.MULTILINE)
         if match:
             name = match.group(1).strip()
-            # Filter out doctor names and headers
-            skip_words = ["DR", "TAB", "CAP", "SYP", "DATE", "REG",
-                          "MBBS", "TIMINGS", "ADVICE"]
-            if not any(w in name.upper() for w in skip_words):
+            skip = ["DR", "TAB", "CAP", "SYP", "DATE", "REG",
+                    "MBBS", "TIMINGS", "ADVICE", "MADE", "WWW"]
+            if not any(w in name.upper() for w in skip):
                 if 3 < len(name) < 40:
                     info["name"] = name.title()
                     break
 
-    # Age and gender
     age_match = re.search(
         r"(?:Age|AGE)\s*[:\-]?\s*(\d{1,3})\s*(?:Yrs?|Years?)?",
         text, re.IGNORECASE
@@ -152,16 +389,15 @@ def extract_patient_info(text):
     if age_match:
         info["age"] = age_match.group(1)
 
-    gender_match = re.search(r"\b(Male|Female|M|F)\b", text, re.IGNORECASE)
+    gender_match = re.search(r"\b(Male|Female)\b", text, re.IGNORECASE)
     if gender_match:
-        g = gender_match.group(1).upper()
-        info["gender"] = "Male" if g in ["M", "MALE"] else "Female"
+        info["gender"] = gender_match.group(1).title()
 
-    # Also handle combined like "20/M" or "25/F"
     combined = re.search(r"(\d{1,3})\s*/\s*(M|F)\b", text, re.IGNORECASE)
     if combined:
         info["age"]    = combined.group(1)
-        info["gender"] = "Male" if combined.group(2).upper() == "M" else "Female"
+        info["gender"] = ("Male" if combined.group(2).upper() == "M"
+                          else "Female")
 
     return info
 
@@ -170,7 +406,6 @@ def extract_patient_info(text):
 def extract_symptoms(text):
     symptoms = []
 
-    # c/o section
     co_match = re.search(
         r"c/?o\s+(.*?)(?:\n\n|Rx|$)",
         text, re.IGNORECASE | re.DOTALL
@@ -182,7 +417,6 @@ def extract_symptoms(text):
             if part and len(part) > 2:
                 symptoms.append(part.title())
 
-    # Keyword detection
     keywords = [
         "fever", "pain", "cough", "cold", "headache", "vomiting",
         "nausea", "diarrhea", "fatigue", "weakness", "swelling",
@@ -203,7 +437,6 @@ def extract_symptoms(text):
 
 # ── Extract tests ─────────────────────────────────────────────────
 def extract_tests(text):
-    # Clean footer first to avoid false positives
     clean = clean_prescription_text(text)
     tests = []
 
@@ -218,8 +451,6 @@ def extract_tests(text):
         r"\b(KFT|RFT|Kidney\s+Function)\b",
         r"\b(Lipid\s+Profile)\b",
         r"\b(USG|Sonography|Ultrasound)\b",
-        r"\b(Sputum|AFB|Culture)\b",
-        r"\b(Blood\s+Culture)\b",
         r"\b(Chest\s+X[- ]?ray)\b",
     ]
 
@@ -231,248 +462,7 @@ def extract_tests(text):
     return list(set(tests))
 
 
-# ── Parse timing from natural language ───────────────────────────
-def parse_timing_natural(timing_text):
-    """
-    Parses natural timing like:
-    'After breakfast and dinner' → ['Morning', 'Night']
-    'After breakfast, lunch and dinner' → ['Morning', 'Afternoon', 'Night']
-    'After dinner' → ['Night']
-    'twice daily' → ['Morning', 'Night']
-    'three times daily' → ['Morning', 'Afternoon', 'Night']
-    'once daily' → ['Morning']
-    'at bedtime' → ['Night']
-    '2 puffs twice daily' → ['Morning', 'Night']
-    """
-    t = timing_text.lower()
-
-    # Natural meal-based timing — most common in Indian prescriptions
-    has_breakfast = "breakfast" in t or "morning" in t
-    has_lunch     = "lunch" in t or "afternoon" in t or "noon" in t
-    has_dinner    = "dinner" in t or "night" in t or "evening" in t
-    has_bedtime   = "bedtime" in t or "bed time" in t or "sleep" in t
-
-    timing = []
-    if has_breakfast: timing.append("Morning (after breakfast)")
-    if has_lunch:     timing.append("Afternoon (after lunch)")
-    if has_dinner:    timing.append("Night (after dinner)")
-    if has_bedtime:   timing.append("At bedtime")
-
-    if timing:
-        return timing
-
-    # Frequency-based fallback
-    if re.search(r"four\s*times|qid|4\s*times", t):
-        return ["Morning", "Afternoon", "Evening", "Night"]
-    if re.search(r"three\s*times|tds|thrice|tid", t):
-        return ["Morning", "Afternoon", "Night"]
-    if re.search(r"twice|two\s*times|bd|b\.d\.", t):
-        return ["Morning", "Night"]
-    if re.search(r"once|one\s*time|od|o\.d\.", t):
-        return ["Morning"]
-    if re.search(r"bedtime|hs|h\.s\.", t):
-        return ["At bedtime"]
-    if re.search(r"sos|as\s*needed|if\s*needed", t):
-        return ["As needed (SOS)"]
-
-    return ["As directed by doctor"]
-
-
-# ── Parse frequency from text ─────────────────────────────────────
-def parse_frequency(text):
-    t = text.lower()
-
-    if re.search(r"four\s*times|qid|4\s*times\s*daily", t):
-        return "Four times daily"
-    if re.search(r"three\s*times|tds|thrice|tid|3\s*times", t):
-        return "Three times daily (TDS)"
-    if re.search(r"twice|two\s*times|bd|b\.d\.|after\s+breakfast\s+and\s+dinner"
-                 r"|breakfast\s+and\s+dinner|morning\s+and\s+night", t):
-        return "Twice daily (BD)"
-    if re.search(r"once|one\s*time|od|o\.d\.|once\s*daily", t):
-        return "Once daily (OD)"
-    if re.search(r"sos|as\s*needed|if\s*needed|when\s*required", t):
-        return "SOS (as needed)"
-    if re.search(r"bedtime|hs|h\.s\.|at\s*night\s*only", t):
-        return "Once daily at bedtime"
-    if re.search(r"after\s+(breakfast|lunch|dinner|meal)", t):
-        # Count how many meals mentioned
-        meals = len(re.findall(
-            r"(breakfast|lunch|dinner|meal)", t
-        ))
-        if meals >= 3:  return "Three times daily (TDS)"
-        if meals == 2:  return "Twice daily (BD)"
-        if meals == 1:  return "Once daily (OD)"
-
-    return "As directed"
-
-
-# ── Main medicine extraction ──────────────────────────────────────
-def extract_medicine_blocks(text):
-    """
-    Handles both formats:
-
-    Format 1 — Numbered:
-    1) Tab Cepodem 200mg twice daily x5d
-
-    Format 2 — Bullet point (like the PDF you uploaded):
-    • TAB CEPODEM 200 ---- 15 days
-    After breakfast and dinner
-    """
-    medicines = []
-    lines     = text.split("\n")
-    i         = 0
-
-    while i < len(lines):
-        line = lines[i].strip()
-
-        # Skip empty lines
-        if not line:
-            i += 1
-            continue
-
-        # Check if this line starts a medicine entry
-        # Matches: "• TAB X", "1) Tab X", "Tab X", "CAP X", "SYP X"
-        med_match = re.match(
-            r"^(?:[•\-\*·]|\d+[).\s])?\s*"
-            r"(TAB|Tab|tab|TAS|Tas|CAP|Cap|SYP|Syp|Syr|INJ|Inj|"
-            r"DROPS?|Drops?|OINT|Oint|SPRAY|Spray|GEL|Gel|CREAM|Cream)\s+"
-            r"([A-Za-z][A-Za-z0-9\-\/\s]+?)(?:\s+(\d+\.?\d*)\s*"
-            r"(mg|ml|mcg|g|iu|units?|puffs?))?"
-            r"(?:\s*[-–—]+\s*|\s+)(.*?)$",
-            line, re.IGNORECASE
-        )
-
-        if not med_match:
-            # Also try without form word — plain medicine name line
-            # e.g. "FLOMIST NASAL SPRAY---- 15 days"
-            plain_match = re.match(
-                r"^(?:[•\-\*·]|\d+[).\s])?\s*"
-                r"([A-Z][A-Z0-9\s\-]+(?:SPRAY|DROPS|CREAM|GEL|OINT))"
-                r"(?:\s*[-–—]+\s*|\s+)(.*?)$",
-                line
-            )
-            if plain_match:
-                form      = "Spray/Drops"
-                drug_name = plain_match.group(1).strip().title()
-                rest      = plain_match.group(2).strip()
-                dosage    = ""
-
-                # Look ahead for timing line
-                timing_text = rest
-                if i + 1 < len(lines):
-                    next_line = lines[i + 1].strip()
-                    if next_line and not re.match(
-                        r"^(?:[•\-\*·]|\d+[).\s])", next_line
-                    ):
-                        timing_text += " " + next_line
-                        i += 1
-
-                duration  = extract_duration(timing_text + " " + rest)
-                frequency = parse_frequency(timing_text)
-                timing    = parse_timing_natural(timing_text)
-
-                if len(drug_name) > 2:
-                    medicines.append({
-                        "form":      form,
-                        "name":      drug_name,
-                        "dosage":    dosage or "As directed",
-                        "frequency": frequency,
-                        "duration":  duration,
-                        "timing":    timing,
-                        "raw":       line
-                    })
-                i += 1
-                continue
-            else:
-                i += 1
-                continue
-
-        form      = med_match.group(1).title()
-        drug_name = med_match.group(2).strip()
-        dosage_n  = med_match.group(3) or ""
-        dosage_u  = med_match.group(4) or ""
-        rest      = med_match.group(5).strip()
-
-        # Clean drug name — remove trailing dashes and spaces
-        drug_name = re.sub(r"[-\s]+$", "", drug_name).strip()
-
-        # Build dosage
-        dosage = (dosage_n + dosage_u) if dosage_n else ""
-
-        # If no dosage in name line, check rest
-        if not dosage:
-            dose_in_rest = re.search(
-                r"(\d+\.?\d*)\s*(mg|ml|mcg|g|iu|units?)",
-                rest, re.IGNORECASE
-            )
-            if dose_in_rest:
-                dosage = dose_in_rest.group(1) + dose_in_rest.group(2)
-
-        if not dosage:
-            dosage = "As prescribed"
-
-        # Look ahead — next line is often timing info
-        # e.g. "After breakfast and dinner"
-        timing_text = rest
-        j = i + 1
-        while j < len(lines):
-            next_line = lines[j].strip()
-            if not next_line:
-                j += 1
-                continue
-            # Stop if next medicine starts
-            if re.match(
-                r"^(?:[•\-\*·]|\d+[).\s])?\s*"
-                r"(TAB|Tab|CAP|Cap|SYP|Syp|INJ|Inj|SPRAY|[A-Z]{3,})\s+[A-Z]",
-                next_line, re.IGNORECASE
-            ):
-                break
-            # It is a continuation line (timing/instructions)
-            timing_text += " " + next_line
-            i = j
-            j += 1
-            break
-
-        duration  = extract_duration(timing_text + " " + rest)
-        frequency = parse_frequency(timing_text)
-        timing    = parse_timing_natural(timing_text)
-
-        if len(drug_name) > 1:
-            medicines.append({
-                "form":      form,
-                "name":      drug_name,
-                "dosage":    dosage,
-                "frequency": frequency,
-                "duration":  duration,
-                "timing":    timing,
-                "raw":       line + " | " + timing_text
-            })
-
-        i += 1
-
-    return medicines
-
-
-# ── Extract duration ──────────────────────────────────────────────
-def extract_duration(text):
-    # "15 days", "x5d", "for 7 days", "1 week", "1 month"
-    patterns = [
-        r"(\d+)\s*(days?|weeks?|months?)",
-        r"[xX×]\s*(\d+)\s*[dD]",
-        r"for\s+(\d+)\s*(days?|weeks?|months?)",
-    ]
-    for pat in patterns:
-        match = re.search(pat, text, re.IGNORECASE)
-        if match:
-            groups = match.groups()
-            num    = groups[0]
-            unit   = groups[1] if len(groups) > 1 and groups[1] else "days"
-            return f"{num} {unit}"
-    return "As directed"
-
-
-# ── Main extract entities function ────────────────────────────────
+# ── Main extract_entities ─────────────────────────────────────────
 def extract_entities(ner_model, text):
     print("\nExtracting entities from prescription...")
 
@@ -484,7 +474,7 @@ def extract_entities(ner_model, text):
     doctor_info  = extract_doctor_info(text)
     patient_info = extract_patient_info(text)
 
-    # Run NER model for additional entity detection
+    # NER model for additional detection
     try:
         ner_results = ner_model(clean_text[:512])
         existing    = [m["name"].lower() for m in medicines]
@@ -510,18 +500,18 @@ def extract_entities(ner_model, text):
         print(f"NER model note: {e}")
 
     entities = {
-        "medicines":          medicines,
-        "drugs":              [m["name"] for m in medicines],
-        "dosages":            [m["dosage"] for m in medicines],
-        "frequencies":        [m["frequency"] for m in medicines],
-        "durations":          [m["duration"] for m in medicines],
-        "timings":            [m["timing"] for m in medicines],
-        "symptoms":           symptoms,
-        "diagnoses":          [],
-        "tests":              tests,
-        "doctor_info":        doctor_info,
-        "patient_info":       patient_info,
-        "prescription_type":  pres_type
+        "medicines":         medicines,
+        "drugs":             [m["name"] for m in medicines],
+        "dosages":           [m["dosage"] for m in medicines],
+        "frequencies":       [m["frequency"] for m in medicines],
+        "durations":         [m["duration"] for m in medicines],
+        "timings":           [m["timing"] for m in medicines],
+        "symptoms":          symptoms,
+        "diagnoses":         [],
+        "tests":             tests,
+        "doctor_info":       doctor_info,
+        "patient_info":      patient_info,
+        "prescription_type": pres_type
     }
 
     print(f"Type     : {pres_type}")

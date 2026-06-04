@@ -1,66 +1,16 @@
 # openfda_api.py
-# Fetches drug information from OpenFDA API + Indian medicine database
+# Drug info: OpenFDA API → RxNorm fuzzy → Indian database fallback
 
 import requests
 import json
 import time
 import re
+import copy
 
 BASE_URL = "https://api.fda.gov/drug"
 
-# ── Get drug label information ────────────────────────────────────
-def get_drug_info(drug_name):
-    print(f"\nFetching data for: {drug_name}")
 
-    url    = f"{BASE_URL}/label.json"
-    params = {"search": f"openfda.generic_name:{drug_name}", "limit": 1}
-
-    try:
-        response = requests.get(url, params=params, timeout=10)
-        if response.status_code == 200:
-            data    = response.json()
-            results = data.get("results", [])
-            if results:
-                result = results[0]
-                info = {
-                    "drug_name":    drug_name,
-                    "purpose":      get_field(result, "purpose"),
-                    "indications":  get_field(result, "indications_and_usage"),
-                    "warnings":     get_field(result, "warnings"),
-                    "dosage":       get_field(result, "dosage_and_administration"),
-                    "side_effects": get_field(result, "adverse_reactions"),
-                    "brand_names":  result.get("openfda", {}).get("brand_name", []),
-                    "source":       "OpenFDA"
-                }
-                print(f"Found OpenFDA data for {drug_name}")
-                return info
-    except Exception as e:
-        print(f"OpenFDA error for {drug_name}: {e}")
-
-    return get_fallback_info(drug_name)
-
-
-# ── Get drug interactions ─────────────────────────────────────────
-def get_drug_interactions(drug_name):
-    print(f"Checking interactions for: {drug_name}")
-    url    = f"{BASE_URL}/event.json"
-    params = {
-        "search": f"patient.drug.medicinalproduct:{drug_name}",
-        "count":  "patient.reaction.reactionmeddrapt.exact",
-        "limit":  5
-    }
-    try:
-        response = requests.get(url, params=params, timeout=10)
-        if response.status_code == 200:
-            data    = response.json()
-            results = data.get("results", [])
-            return [r["term"] for r in results[:5]]
-    except Exception as e:
-        print(f"Interaction check error: {e}")
-    return []
-
-
-# ── Helper to safely get field ────────────────────────────────────
+# ── Helper ────────────────────────────────────────────────────────
 def get_field(result, field):
     value = result.get(field, [])
     if isinstance(value, list) and value:
@@ -71,14 +21,118 @@ def get_field(result, field):
     return "Information not available"
 
 
-# ── Indian medicine fallback database ────────────────────────────
+# ── RxNorm fuzzy search ───────────────────────────────────────────
+def search_rxnorm_fuzzy(drug_name):
+    """
+    Searches RxNorm for any drug name including Indian brand names.
+    Returns generic name if found.
+    """
+    try:
+        url      = "https://rxnav.nlm.nih.gov/REST/drugs.json"
+        params   = {"name": drug_name}
+        response = requests.get(url, params=params, timeout=8)
+
+        if response.status_code == 200:
+            data      = response.json()
+            grps      = (data.get("drugGroup", {})
+                             .get("conceptGroup", []))
+            for grp in grps:
+                concepts = grp.get("conceptProperties", [])
+                if concepts:
+                    name  = concepts[0].get("name", "")
+                    rxcui = concepts[0].get("rxcui", "")
+                    if name and rxcui:
+                        return {"generic_name": name, "rxcui": rxcui}
+    except Exception as e:
+        print(f"RxNorm search error for {drug_name}: {e}")
+    return None
+
+
+# ── OpenFDA search by name ────────────────────────────────────────
+def search_openfda(drug_name):
+    try:
+        url      = f"{BASE_URL}/label.json"
+        params   = {
+            "search": f"openfda.generic_name:{drug_name}",
+            "limit":  1
+        }
+        response = requests.get(url, params=params, timeout=10)
+
+        if response.status_code == 200:
+            data    = response.json()
+            results = data.get("results", [])
+            if results:
+                result = results[0]
+                return {
+                    "drug_name":    drug_name,
+                    "purpose":      get_field(result, "purpose"),
+                    "indications":  get_field(result,
+                                              "indications_and_usage"),
+                    "warnings":     get_field(result, "warnings"),
+                    "side_effects": get_field(result, "adverse_reactions"),
+                    "brand_names":  result.get(
+                        "openfda", {}).get("brand_name", []),
+                    "source":       "OpenFDA"
+                }
+    except Exception as e:
+        print(f"OpenFDA error for {drug_name}: {e}")
+    return None
+
+
+# ── Main get_drug_info ────────────────────────────────────────────
+def get_drug_info(drug_name):
+    print(f"Fetching info for: {drug_name}")
+
+    # Step 1 — try OpenFDA directly
+    result = search_openfda(drug_name)
+    if result:
+        print(f"Found on OpenFDA: {drug_name}")
+        return result
+
+    # Step 2 — try RxNorm to get generic name
+    rxnorm = search_rxnorm_fuzzy(drug_name)
+    if rxnorm:
+        generic = rxnorm.get("generic_name", "")
+        print(f"RxNorm: {drug_name} -> {generic}")
+        if generic and generic.lower() != drug_name.lower():
+            result = search_openfda(generic)
+            if result:
+                result["drug_name"]    = drug_name
+                result["generic_name"] = generic
+                result["source"]       = "OpenFDA via RxNorm"
+                return result
+
+    # Step 3 — Indian database fallback
+    print(f"Using Indian database for: {drug_name}")
+    return get_fallback_info(drug_name)
+
+
+# ── Drug interactions ─────────────────────────────────────────────
+def get_drug_interactions(drug_name):
+    try:
+        url      = f"{BASE_URL}/event.json"
+        params   = {
+            "search": f"patient.drug.medicinalproduct:{drug_name}",
+            "count":  "patient.reaction.reactionmeddrapt.exact",
+            "limit":  5
+        }
+        response = requests.get(url, params=params, timeout=10)
+        if response.status_code == 200:
+            data    = response.json()
+            results = data.get("results", [])
+            return [r["term"] for r in results[:3]]
+    except Exception:
+        pass
+    return []
+
+
+# ── Indian medicine database ──────────────────────────────────────
 def get_fallback_info(drug_name):
-    fallback_db = {
-        # Antibiotics
+    db = {
         "azithral": {
             "purpose":      "Antibiotic for bacterial infections",
             "indications":  "Chest, throat, ear, skin infections",
-            "warnings":     "Complete full course. Tell doctor about heart conditions.",
+            "warnings":     "Complete full course. Inform doctor about heart conditions.",
             "side_effects": "Nausea, stomach pain, diarrhea",
             "brand_names":  ["Azithral", "Azee", "Zithromax"]
         },
@@ -92,7 +146,7 @@ def get_fallback_info(drug_name):
         "ceftas": {
             "purpose":      "Cephalosporin antibiotic",
             "indications":  "Respiratory, urinary, skin infections",
-            "warnings":     "Tell doctor if allergic to penicillin.",
+            "warnings":     "Inform doctor if allergic to penicillin.",
             "side_effects": "Diarrhea, nausea, rash",
             "brand_names":  ["Ceftas", "Taxim-O", "Zifi"]
         },
@@ -147,7 +201,7 @@ def get_fallback_info(drug_name):
         },
         "metronidazole": {
             "purpose":      "Antibiotic and antiprotozoal",
-            "indications":  "Amoebiasis, giardia, dental infections, bacterial infections",
+            "indications":  "Amoebiasis, giardia, dental and bacterial infections",
             "warnings":     "Strictly avoid alcohol during and 48h after treatment.",
             "side_effects": "Nausea, metallic taste, headache",
             "brand_names":  ["Flagyl", "Metrogyl", "Aldezole"]
@@ -159,13 +213,19 @@ def get_fallback_info(drug_name):
             "side_effects": "Nausea, headache, dizziness",
             "brand_names":  ["Ornof", "Orni", "Ornidazole"]
         },
-        # Acid and GI
         "cyra": {
             "purpose":      "Proton pump inhibitor - reduces stomach acid",
             "indications":  "Acidity, GERD, stomach ulcers, gastritis",
             "warnings":     "Take 30 min before meals. Long-term use affects bone density.",
             "side_effects": "Headache, nausea, diarrhea",
             "brand_names":  ["Cyra", "Pantocid", "Pan-D"]
+        },
+        "pantocid": {
+            "purpose":      "Proton pump inhibitor - reduces stomach acid",
+            "indications":  "Acidity, GERD, stomach ulcers, gastritis",
+            "warnings":     "Take 30 min before meals.",
+            "side_effects": "Headache, diarrhea, nausea",
+            "brand_names":  ["Pantocid", "Pan", "Pantop", "Cyra"]
         },
         "pantoprazole": {
             "purpose":      "Proton pump inhibitor",
@@ -191,7 +251,7 @@ def get_fallback_info(drug_name):
         "ondansetron": {
             "purpose":      "Anti-nausea medication",
             "indications":  "Nausea, vomiting after surgery or chemotherapy",
-            "warnings":     "Tell doctor about heart rhythm problems.",
+            "warnings":     "Inform doctor about heart rhythm problems.",
             "side_effects": "Headache, constipation, fatigue",
             "brand_names":  ["Oncet", "Emeset", "Vomikind"]
         },
@@ -237,7 +297,6 @@ def get_fallback_info(drug_name):
             "side_effects": "Nausea, dizziness, headache",
             "brand_names":  ["Norflox", "Norfloxacin", "Norflo-TZ"]
         },
-        # Pain and Fever
         "paracetamol": {
             "purpose":      "Fever reducer and pain reliever",
             "indications":  "Fever, headache, body pain, toothache",
@@ -280,9 +339,8 @@ def get_fallback_info(drug_name):
             "side_effects": "Stomach pain, nausea, headache",
             "brand_names":  ["Voveran", "Diclofenac"]
         },
-        # Antiallergic
         "lez": {
-            "purpose":      "Antihistamine - Levocetirizine",
+            "purpose":      "Antihistamine - Levocetirizine for allergies",
             "indications":  "Allergic rhinitis, urticaria, sneezing, runny nose",
             "warnings":     "May cause mild drowsiness.",
             "side_effects": "Mild drowsiness, dry mouth, headache",
@@ -302,6 +360,27 @@ def get_fallback_info(drug_name):
             "side_effects": "Drowsiness, dry mouth, headache",
             "brand_names":  ["Zyrtec", "Cetzine", "Alerid"]
         },
+        "lorfast": {
+            "purpose":      "Antihistamine - Loratadine for allergies",
+            "indications":  "Allergic rhinitis, urticaria, hay fever, sneezing",
+            "warnings":     "Generally non-drowsy. Avoid alcohol.",
+            "side_effects": "Headache, dry mouth, fatigue",
+            "brand_names":  ["Lorfast", "Loratadine", "Claritin", "Alavert"]
+        },
+        "lorfast am": {
+            "purpose":      "Antihistamine - Loratadine for allergies and congestion",
+            "indications":  "Allergic rhinitis with nasal congestion, urticaria",
+            "warnings":     "Avoid in heart disease and hypertension.",
+            "side_effects": "Headache, dry mouth, palpitations",
+            "brand_names":  ["Lorfast AM", "Loratadine + Pseudoephedrine"]
+        },
+        "loratadine": {
+            "purpose":      "Non-drowsy antihistamine for allergies",
+            "indications":  "Hay fever, urticaria, allergic rhinitis",
+            "warnings":     "Generally safe. Avoid alcohol.",
+            "side_effects": "Headache, dry mouth, fatigue",
+            "brand_names":  ["Lorfast", "Claritin", "Alavert"]
+        },
         "montair": {
             "purpose":      "Leukotriene antagonist for allergy and asthma",
             "indications":  "Asthma, allergic rhinitis, exercise-induced bronchospasm",
@@ -316,7 +395,6 @@ def get_fallback_info(drug_name):
             "side_effects": "Headache, stomach pain, sleep problems",
             "brand_names":  ["Montair", "Singulair", "Romilast"]
         },
-        # Cough and Respiratory
         "brozedem": {
             "purpose":      "Cough syrup - expectorant and suppressant",
             "indications":  "Wet and dry cough, chest congestion",
@@ -337,13 +415,6 @@ def get_fallback_info(drug_name):
             "warnings":     "Avoid in hypertension. Shake before use.",
             "side_effects": "Palpitations, nausea, tremor",
             "brand_names":  ["Ascoril", "Ascoril LS", "Ascoril D"]
-        },
-        "alex": {
-            "purpose":      "Cough syrup - antiallergic and expectorant",
-            "indications":  "Cough, cold, allergic rhinitis",
-            "warnings":     "May cause drowsiness.",
-            "side_effects": "Drowsiness, dry mouth",
-            "brand_names":  ["Alex", "Alex Syrup"]
         },
         "levolin": {
             "purpose":      "Bronchodilator - opens airways",
@@ -380,7 +451,27 @@ def get_fallback_info(drug_name):
             "side_effects": "Mild stinging on application",
             "brand_names":  ["Nexaclean", "Nasoclear"]
         },
-        # Vitamins and Supplements
+        "flomist": {
+            "purpose":      "Nasal corticosteroid spray - reduces nasal inflammation",
+            "indications":  "Allergic rhinitis, nasal congestion, sinusitis, nasal polyps",
+            "warnings":     "Use regularly as directed. Takes 1-2 weeks for full effect.",
+            "side_effects": "Nasal dryness, mild nosebleed, sneezing after use",
+            "brand_names":  ["Flomist", "Fluticasone", "Flonase", "Nasoflo"]
+        },
+        "fluticasone": {
+            "purpose":      "Corticosteroid nasal spray for allergy",
+            "indications":  "Allergic rhinitis, nasal congestion, nasal polyps",
+            "warnings":     "Use regularly. Do not stop suddenly if used long-term.",
+            "side_effects": "Nasal dryness, mild nosebleed",
+            "brand_names":  ["Flomist", "Flonase", "Nasoflo"]
+        },
+        "natvie": {
+            "purpose":      "Vitamin and mineral supplement - Nattokinase based",
+            "indications":  "Nutritional deficiency, general health supplement",
+            "warnings":     "Take with food. Consult doctor if on blood thinners.",
+            "side_effects": "Mild nausea if taken on empty stomach",
+            "brand_names":  ["Natvie", "Nattokinase supplement"]
+        },
         "shelcal": {
             "purpose":      "Calcium and Vitamin D3 supplement",
             "indications":  "Calcium deficiency, osteoporosis, bone health",
@@ -394,13 +485,6 @@ def get_fallback_info(drug_name):
             "warnings":     "Generally safe. Urine may turn yellow - this is normal.",
             "side_effects": "Rare. Mild nausea occasionally.",
             "brand_names":  ["Becosules", "Becadexamin"]
-        },
-        "vitamin d3": {
-            "purpose":      "Vitamin D3 supplement",
-            "indications":  "Vitamin D deficiency, bone health, immunity",
-            "warnings":     "Take with fatty meal for better absorption.",
-            "side_effects": "Nausea if overdosed",
-            "brand_names":  ["Calcirol", "D-Rise", "Uprise-D3"]
         },
         "uprise": {
             "purpose":      "Vitamin D3 high dose supplement",
@@ -416,7 +500,6 @@ def get_fallback_info(drug_name):
             "side_effects": "Dizziness, drowsiness, weight gain, blurred vision",
             "brand_names":  ["Pregabalin", "Lyrica", "Pregeb"]
         },
-        # Diabetes
         "metformin": {
             "purpose":      "Controls blood sugar in Type 2 Diabetes",
             "indications":  "Type 2 Diabetes management",
@@ -438,14 +521,6 @@ def get_fallback_info(drug_name):
             "side_effects": "Low blood sugar, weight gain",
             "brand_names":  ["Amaryl", "Glimestar", "Diapride"]
         },
-        "januvia": {
-            "purpose":      "DPP-4 inhibitor for Type 2 Diabetes",
-            "indications":  "Type 2 Diabetes - controls blood sugar",
-            "warnings":     "Report severe joint pain to doctor.",
-            "side_effects": "Headache, runny nose, sore throat",
-            "brand_names":  ["Januvia", "Sitagliptin", "Istavel"]
-        },
-        # Blood Pressure
         "amlodipine": {
             "purpose":      "Calcium channel blocker for high blood pressure",
             "indications":  "Hypertension, angina, coronary artery disease",
@@ -474,7 +549,6 @@ def get_fallback_info(drug_name):
             "side_effects": "Dizziness, headache, increased potassium",
             "brand_names":  ["Losar", "Covance", "Repace"]
         },
-        # Thyroid
         "thyronorm": {
             "purpose":      "Thyroid hormone replacement - Levothyroxine",
             "indications":  "Hypothyroidism, thyroid hormone deficiency",
@@ -491,25 +565,19 @@ def get_fallback_info(drug_name):
         },
     }
 
-    # Clean the drug name for lookup
     key       = drug_name.lower().strip()
     key_clean = re.sub(r"\d+$", "", key).strip()
 
-    # Try exact match
-    info = fallback_db.get(key)
+    info = (db.get(key)
+            or db.get(key_clean))
 
-    # Try without trailing numbers
     if not info:
-        info = fallback_db.get(key_clean)
-
-    # Try partial match
-    if not info:
-        for db_key in fallback_db:
-            if key_clean.startswith(db_key) or db_key.startswith(key_clean):
-                info = fallback_db[db_key]
+        for db_key in db:
+            if (key_clean.startswith(db_key)
+                    or db_key.startswith(key_clean)):
+                info = db[db_key]
                 break
 
-    # Final fallback
     if not info:
         info = {
             "purpose":      "Please consult your doctor or pharmacist for details",
@@ -519,22 +587,20 @@ def get_fallback_info(drug_name):
             "brand_names":  []
         }
 
-    import copy
     info = copy.deepcopy(info)
     info["drug_name"] = drug_name
     info["source"]    = "Indian Medicine Database"
     return info
 
 
-
-# ── Run test ──────────────────────────────────────────────────────
+# ── Test ──────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    test_drugs = ["paracetamol", "cepodem", "azithral", "cyra", "meftal spas"]
+    test_drugs = ["cepodem", "pantocid", "lorfast am",
+                  "flomist", "natvie", "azithral"]
     for drug in test_drugs:
         info = get_drug_info(drug)
         print(f"\n{drug.upper()}")
-        print(f"  Purpose    : {info.get('purpose', 'N/A')}")
-        print(f"  Warnings   : {info.get('warnings', 'N/A')}")
-        print(f"  Brand names: {info.get('brand_names', [])}")
-        print(f"  Source     : {info.get('source', 'N/A')}")
-        time.sleep(0.3)
+        print(f"  Purpose : {info.get('purpose','N/A')}")
+        print(f"  Warning : {info.get('warnings','N/A')[:80]}")
+        print(f"  Source  : {info.get('source','N/A')}")
+        time.sleep(0.2)
