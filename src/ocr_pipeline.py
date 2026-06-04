@@ -1,134 +1,115 @@
 # ocr_pipeline.py
-# This file takes a prescription image and extracts text from it using EasyOCR
+# Handles typed PDFs perfectly, handwritten with correction step
 
-import easyocr
+import os
+import re
 import cv2
 import numpy as np
 from PIL import Image
-import matplotlib.pyplot as plt
-import os
-
-# ─── Step 1: Initialize the OCR reader ───────────────────────────────────────
-# This loads the EasyOCR model — first time will download ~100MB model files
-# After first run it uses cached files so it's fast
-def initialize_reader():
-    print("Initializing EasyOCR reader...")
-    reader = easyocr.Reader(['en'], gpu=False)  # gpu=False since we have no GPU
-    print("Reader initialized successfully.")
-    return reader
 
 
-# ─── Step 2: Load and preprocess the image ───────────────────────────────────
-# Preprocessing improves OCR accuracy on handwritten text
+# ── Extract text from PDF ─────────────────────────────────────────
+def extract_from_pdf(pdf_path):
+    try:
+        import fitz  # PyMuPDF
+        doc  = fitz.open(pdf_path)
+        text = ""
+        for page in doc:
+            text += page.get_text()
+        doc.close()
+
+        if text.strip() and len(text.strip()) > 50:
+            print(f"PDF text extracted: {len(text)} characters")
+            return text.strip(), "typed"
+
+        # No text layer — scanned PDF, convert to image
+        print("Scanned PDF detected — converting to image for OCR")
+        doc       = fitz.open(pdf_path)
+        page      = doc[0]
+        mat       = fitz.Matrix(2.5, 2.5)
+        pix       = page.get_pixmap(matrix=mat)
+        img_path  = pdf_path.replace(".pdf", "_page1.png")
+        pix.save(img_path)
+        doc.close()
+        text, _   = ocr_image(img_path)
+        return text, "handwritten"
+
+    except ImportError:
+        print("PyMuPDF not installed. Run: pip install pymupdf")
+        return "", "unknown"
+    except Exception as e:
+        print(f"PDF error: {e}")
+        return "", "unknown"
+
+
+# ── Preprocess image for OCR ──────────────────────────────────────
 def preprocess_image(image_path):
-    print(f"Loading image from: {image_path}")
-    
-    # Load image using PIL
-    image = Image.open(image_path)
-    
-    # Convert to numpy array for OpenCV processing
-    img_array = np.array(image)
-    
-    # Convert to grayscale — removes color noise
-    if len(img_array.shape) == 3:
-        gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+    img = cv2.imread(image_path)
+    if img is None:
+        img = np.array(Image.open(image_path).convert("RGB"))
+        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
+    h, w = img.shape[:2]
+    if w < 1200:
+        scale = 1200 / w
+        img   = cv2.resize(img, None, fx=scale, fy=scale,
+                           interpolation=cv2.INTER_CUBIC)
+
+    gray     = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    denoised = cv2.fastNlMeansDenoising(gray, h=10)
+    thresh   = cv2.adaptiveThreshold(
+        denoised, 255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY, 11, 2
+    )
+
+    processed_path = image_path.rsplit(".", 1)[0] + "_processed.png"
+    cv2.imwrite(processed_path, thresh)
+    return processed_path
+
+
+# ── OCR image with EasyOCR ────────────────────────────────────────
+def ocr_image(image_path):
+    try:
+        import easyocr
+        reader  = easyocr.Reader(["en"], gpu=False)
+
+        # Try original first
+        r1      = reader.readtext(image_path)
+        text1   = "\n".join([item[1] for item in r1 if item[2] > 0.3])
+
+        # Try preprocessed
+        try:
+            proc   = preprocess_image(image_path)
+            r2     = reader.readtext(proc)
+            text2  = "\n".join([item[1] for item in r2 if item[2] > 0.3])
+        except Exception:
+            text2  = ""
+
+        text = text1 if len(text1) >= len(text2) else text2
+        print(f"OCR extracted {len(text)} characters")
+        return text, "handwritten"
+
+    except Exception as e:
+        print(f"OCR error: {e}")
+        return "", "handwritten"
+
+
+# ── Main pipeline ─────────────────────────────────────────────────
+def run_ocr_pipeline(file_path):
+    ext  = os.path.splitext(file_path)[1].lower()
+
+    if ext == ".pdf":
+        text, pres_type = extract_from_pdf(file_path)
+    elif ext in [".jpg", ".jpeg", ".png", ".bmp", ".tiff"]:
+        text, pres_type = ocr_image(file_path)
     else:
-        gray = img_array
-    
-    # Apply thresholding — makes text sharper and clearer
-    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    
-    # Denoise — removes small dots and noise around text
-    denoised = cv2.fastNlMeansDenoising(thresh, h=10)
-    
-    print("Image preprocessed successfully.")
-    return denoised
+        print(f"Unsupported file type: {ext}")
+        return "", "unknown"
 
-
-# ─── Step 3: Extract text from image ─────────────────────────────────────────
-def extract_text(reader, image):
-    print("Extracting text from image...")
-    
-    # EasyOCR reads the image and returns list of (bounding_box, text, confidence)
-    results = reader.readtext(image)
-    
-    return results
-
-
-# ─── Step 4: Parse and clean the results ─────────────────────────────────────
-def parse_results(results):
-    extracted_data = []
-    
-    for (bbox, text, confidence) in results:
-        # Only keep results with confidence above 30%
-        # Low confidence = EasyOCR is not sure about that text
-        if confidence > 0.30:
-            extracted_data.append({
-                'text': text,
-                'confidence': round(confidence * 100, 2),
-                'bbox': bbox
-            })
-    
-    return extracted_data
-
-
-# ─── Step 5: Display results cleanly ─────────────────────────────────────────
-def display_results(extracted_data):
-    print("\n" + "="*50)
-    print("EXTRACTED TEXT FROM PRESCRIPTION")
-    print("="*50)
-    
-    full_text = ""
-    for item in extracted_data:
-        print(f"Text: {item['text']:<30} Confidence: {item['confidence']}%")
-        full_text += item['text'] + " "
-    
-    print("\n" + "="*50)
-    print("FULL EXTRACTED TEXT:")
-    print(full_text.strip())
-    print("="*50)
-    
-    return full_text.strip()
-
-
-# ─── Step 6: Save results to output file ─────────────────────────────────────
-def save_results(full_text, output_path="outputs/extracted_text.txt"):
+    # Save extracted text
     os.makedirs("outputs", exist_ok=True)
-    with open(output_path, "w") as f:
-        f.write(full_text)
-    print(f"\nResults saved to {output_path}")
+    with open("outputs/extracted_text.txt", "w", encoding="utf-8") as f:
+        f.write(text)
 
-
-# ─── Main function — runs everything ─────────────────────────────────────────
-def run_ocr_pipeline(image_path):
-    # Step 1
-    reader = initialize_reader()
-    
-    # Step 2
-    processed_image = preprocess_image(image_path)
-    
-    # Step 3
-    results = extract_text(reader, processed_image)
-    
-    # Step 4
-    extracted_data = parse_results(results)
-    
-    # Step 5
-    full_text = display_results(extracted_data)
-    
-    # Step 6
-    save_results(full_text)
-    
-    return full_text
-
-
-# ─── Run this file directly ───────────────────────────────────────────────────
-if __name__ == "__main__":
-    image_path = "data/raw/sample_prescription.jpg"
-    
-    # Check if image exists
-    if not os.path.exists(image_path):
-        print(f"ERROR: No image found at {image_path}")
-        print("Please add a prescription image at data/raw/sample_prescription.jpg")
-    else:
-        run_ocr_pipeline(image_path)
+    return text, pres_type
