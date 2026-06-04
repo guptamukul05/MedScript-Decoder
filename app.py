@@ -486,53 +486,32 @@ with tab1:
         
     with right:
         if analyze_btn:
-            if not prescription_text and not uploaded_image:
-                st.error("Please upload an image or paste prescription text first.")
+            if not prescription_text or not prescription_text.strip():
+                st.error("Please upload a file and extract text, or paste prescription text first.")
             else:
                 with st.spinner(""):
-                    # Progress steps
                     progress = st.progress(0)
                     status   = st.empty()
-                    
-                    # Step 1 — OCR
-                    status.markdown("""
-                    <div style='color:#a78bfa; font-size:0.9rem;'>
-                        🔍 Running OCR on prescription...
-                    </div>""", unsafe_allow_html=True)
-                    progress.progress(20)
-                    
-                    ocr_text = ""
-                    if uploaded_image:
-                        with tempfile.NamedTemporaryFile(
-                            delete=False,
-                            suffix=".jpg"
-                        ) as tmp:
-                            tmp.write(uploaded_image.getvalue())
-                            tmp_path = tmp.name
-                        ocr_text, _ = run_ocr_pipeline(tmp_path)
-                        os.unlink(tmp_path)
-                    else:
-                        ocr_text = prescription_text
-                    
-                    # Step 2 — NER
+
                     status.markdown("""
                     <div style='color:#a78bfa; font-size:0.9rem;'>
                         🧠 Extracting medical entities with PubMedBERT...
                     </div>""", unsafe_allow_html=True)
-                    progress.progress(50)
-                    
+                    progress.progress(40)
+
+                    ocr_text = prescription_text
+
                     ner      = load_models()
                     entities = extract_entities(ner, ocr_text)
-                    
-                    # Step 3 — APIs
+
                     status.markdown("""
                     <div style='color:#a78bfa; font-size:0.9rem;'>
-                        💊 Fetching medicine information from OpenFDA...
+                        💊 Fetching medicine information...
                     </div>""", unsafe_allow_html=True)
                     progress.progress(75)
-                    
+
                     report = generate_full_report(entities, ocr_text=ocr_text)
-                    
+
                     progress.progress(100)
                     status.markdown("""
                     <div style='color:#38ef7d; font-size:0.9rem;'>
@@ -541,51 +520,53 @@ with tab1:
                     time.sleep(0.5)
                     progress.empty()
                     status.empty()
-                    # ── Patient and Doctor Info Card ─────────────────────────────────
-                    patient = entities.get('patient_info', {})
-                    doctor  = entities.get('doctor_info', {})
 
-                    if patient or doctor:
-                        info_parts = []
-                        if patient.get('name'):
-                            info_parts.append(f"👤 <strong>Patient:</strong> {patient['name']}")
-                        if patient.get('age'):
-                            info_parts.append(f"🎂 <strong>Age:</strong> {patient['age']} yrs")
-                        if patient.get('gender'):
-                            info_parts.append(f"⚧ <strong>Gender:</strong> {patient['gender']}")
-                        if patient.get('date'):
-                            info_parts.append(f"📅 <strong>Date:</strong> {patient['date']}")
-                        if doctor.get('doctor_name'):
-                            info_parts.append(f"👨‍⚕️ <strong>Doctor:</strong> {doctor['doctor_name']}")
-                        if doctor.get('clinic'):
-                            info_parts.append(f"🏥 <strong>Clinic:</strong> {doctor['clinic']}")
-                        if doctor.get('reg_number'):
-                            info_parts.append(f"🪪 <strong>Reg No:</strong> {doctor['reg_number']}")
-                        
-                        info_html = " &nbsp;|&nbsp; ".join(info_parts)
-                        st.markdown(f"""
-                        <div class='patient-info-card'>
-                            {info_html}
-                        </div>
-                        """, unsafe_allow_html=True)
-
-                    # ── Symptoms ──────────────────────────────────────────────────────
-                    if entities.get('symptoms'):
-                        st.markdown(
-                            "<div class='section-header'>🤒 Symptoms / Complaints</div>",
-                            unsafe_allow_html=True
-                        )
-                        tags = " ".join([
-                            f"<span class='info-tag'>{s}</span>"
-                            for s in entities['symptoms']
-                        ])
-                        st.markdown(tags, unsafe_allow_html=True)
-                        st.markdown("<br>", unsafe_allow_html=True)
-                            
-                # Save to session state
                 st.session_state['pres_report']   = report
                 st.session_state['pres_entities'] = entities
-                st.session_state['pres_report_text'] = ocr_text
+                st.session_state['pres_ocr_text'] = ocr_text
+                                    
+
+                # ── Patient and Doctor Info Card ─────────────────────────────────
+                patient = entities.get('patient_info', {})
+                doctor  = entities.get('doctor_info', {})
+
+                if patient or doctor:
+                    info_parts = []
+                    if patient.get('name'):
+                        info_parts.append(f"👤 <strong>Patient:</strong> {patient['name']}")
+                    if patient.get('age'):
+                        info_parts.append(f"🎂 <strong>Age:</strong> {patient['age']} yrs")
+                    if patient.get('gender'):
+                        info_parts.append(f"⚧ <strong>Gender:</strong> {patient['gender']}")
+                    if patient.get('date'):
+                        info_parts.append(f"📅 <strong>Date:</strong> {patient['date']}")
+                    if doctor.get('doctor_name'):
+                        info_parts.append(f"👨‍⚕️ <strong>Doctor:</strong> {doctor['doctor_name']}")
+                    if doctor.get('clinic'):
+                        info_parts.append(f"🏥 <strong>Clinic:</strong> {doctor['clinic']}")
+                    if doctor.get('reg_number'):
+                        info_parts.append(f"🪪 <strong>Reg No:</strong> {doctor['reg_number']}")
+                    
+                    info_html = " &nbsp;|&nbsp; ".join(info_parts)
+                    st.markdown(f"""
+                    <div class='patient-info-card'>
+                        {info_html}
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                # ── Symptoms ──────────────────────────────────────────────────────
+                if entities.get('symptoms'):
+                    st.markdown(
+                        "<div class='section-header'>🤒 Symptoms / Complaints</div>",
+                        unsafe_allow_html=True
+                    )
+                    tags = " ".join([
+                        f"<span class='info-tag'>{s}</span>"
+                        for s in entities['symptoms']
+                    ])
+                    st.markdown(tags, unsafe_allow_html=True)
+                    st.markdown("<br>", unsafe_allow_html=True)
+                        
         
         # Display results if available
         if 'pres_report' in st.session_state:
