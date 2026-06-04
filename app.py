@@ -572,6 +572,10 @@ with tab1:
         if 'pres_report' in st.session_state:
             report   = st.session_state['pres_report']
             entities = st.session_state['pres_entities']
+            # DEBUG — remove after fixing
+            st.write("Medicines in report:", len(report.get('medicines', [])))
+            st.write("Medicines in entities:", len(entities.get('medicines', [])))
+            st.write("Entity drugs:", entities.get('drugs', []))
             
             # ── Extracted text ────────────────────────────────────
             with st.expander("📄 Extracted Text", expanded=False):
