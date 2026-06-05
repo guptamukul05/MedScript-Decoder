@@ -31,150 +31,176 @@ NORMAL_RANGES = {
 # ── Dynamic report value analyzer ────────────────────────────────
 def analyze_report_values(report_text):
     """
-    Dynamically parses any lab report PDF.
-    Extracts test name, value, unit and reference range from the text.
-    Compares actual value against the reference range in the report.
-    No hardcoded ranges needed.
+    Handles lab reports where value, unit and range are on separate lines.
+    This is the standard PyMuPDF extraction format for columnar PDFs.
     """
     abnormal = []
     normal   = []
-    lines    = report_text.split("\n")
-
-    # Pattern: test name, value, optional unit, min - max
-    number_pattern = re.compile(
-        r"^(.*?)\s+([\d]+\.?\d*)\s*"
-        r"(g/dL|%|thou/mm3|mill/mm3|fL|pg|mm/hr|mg/dL|U/L|"
-        r"mEq/L|IU/mL|µIU/mL|uIU/mL|ng/mL|pg/mL|umol/L|mmol/L|"
-        r"thou/uL|10\^3/uL|10\^6/uL|mL/min.*?)?\s*"
-        r"([\d]+\.?\d*)\s*[-–]\s*([\d]+\.?\d*)?\s*$"
-    )
-
-    # Pattern for < or > reference ranges
-    lt_gt_pattern = re.compile(
-        r"^(.*?)\s+([\d]+\.?\d*)\s*"
-        r"(g/dL|%|thou/mm3|mg/dL|U/L|mEq/L|IU/mL|µIU/mL|uIU/mL)?\s*"
-        r"([<>][\d]+\.?\d*)\s*$"
-    )
+    lines    = [l.strip() for l in report_text.split("\n")]
+    seen     = set()
 
     skip_keywords = [
         "test name", "bio. ref", "reference", "page", "note",
         "comment", "interpretation", "collected", "processed",
         "name", "age", "gender", "lab no", "ref by", "reported",
         "important", "dr lal", "tel", "fax", "email", "www",
-        "factors", "measurement", "hemoglobin variant",
-        "end of report", "authenticity", "scan", "qr code",
-        "dr rajni", "dr divya", "dr gaurav", "dr rachna",
+        "factors", "measurement", "end of report", "authenticity",
+        "scan", "qr code", "dr rajni", "dr divya", "dr gaurav",
         "consultant", "pathologist", "biochemist", "laboratory",
-        "test conducted", "sample", "kindly", "court",
-        "medico", "computer generated", "signature"
+        "test conducted", "sample", "kindly", "court", "medico",
+        "computer generated", "signature", "report status",
+        "collected at", "processed at", "results", "units",
+        "hemogram", "liver", "kidney", "function test",
+        "differential", "leucocyte", "absolute", "immunoglobulin",
+        "thyroid", "hba1c", "interpretation", "reference group",
+        "non diabetic", "prediabetes", "diagnosing", "therapeutic",
+        "factors that", "measurement", "hbsc", "hbss"
     ]
 
-    seen = set()  # Avoid duplicate entries
+    # Units we recognize
+    unit_patterns = re.compile(
+        r"^(g/dL|%|thou/mm3|mill/mm3|fL|pg|mm/hr|mg/dL|U/L|"
+        r"mEq/L|IU/mL|µIU/mL|uIU/mL|ng/mL|pg/mL|umol/L|mmol/L|"
+        r"thou/uL|gm/dL|mL/min.*?)$",
+        re.IGNORECASE
+    )
 
-    for line in lines:
-        line = line.strip()
-        if not line or len(line) < 5:
+    # Reference range patterns
+    range_pattern    = re.compile(r"^([\d]+\.?\d*)\s*[-–]\s*([\d]+\.?\d*)$")
+    lt_gt_pattern    = re.compile(r"^([<>])\s*([\d]+\.?\d*)$")
+    range_with_space = re.compile(r"^\s*([\d]+\.?\d*)\s*-\s*([\d]+\.?\d*)\s*$")
+
+    # Pure number pattern
+    number_pattern = re.compile(r"^[\d]+\.?\d*$")
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+
+        if not line or len(line) < 2:
+            i += 1
             continue
 
         line_lower = line.lower()
         if any(kw in line_lower for kw in skip_keywords):
+            i += 1
             continue
 
-        # Try main pattern
-        match = number_pattern.match(line)
-        if match:
-            test_name = match.group(1).strip()
-            value_str = match.group(2)
-            unit      = (match.group(3) or "").strip()
-            ref_min   = match.group(4)
-            ref_max   = match.group(5)
+        # Check if this looks like a test name
+        # Test names are text lines that are not numbers, units or ranges
+        is_number   = number_pattern.match(line)
+        is_unit     = unit_patterns.match(line)
+        is_range    = range_pattern.match(line) or range_with_space.match(line)
+        is_lt_gt    = lt_gt_pattern.match(line)
+        is_in_parens = line.startswith("(") and line.endswith(")")
 
-            # Clean test name
-            test_name = re.sub(r"\s*\(.*?\)\s*$", "", test_name).strip()
-            test_name = re.sub(r"\*+", "", test_name).strip()
-            test_name = re.sub(r"\s+", " ", test_name).strip()
+        if (not is_number and not is_unit and not is_range
+                and not is_lt_gt and not is_in_parens
+                and len(line) > 3
+                and not line[0].isdigit()):
 
-            if len(test_name) < 3 or re.match(r"^\d+$", test_name):
-                continue
-            if test_name in seen:
-                continue
+            # This could be a test name — look ahead for value/unit/range
+            test_name = line
 
-            try:
-                value   = float(value_str)
-                ref_min = float(ref_min) if ref_min else None
-                ref_max = float(ref_max) if ref_max else None
+            # Remove method in parentheses from next line
+            j = i + 1
+            if j < len(lines) and lines[j].startswith("("):
+                j += 1  # Skip method description line
 
-                if ref_min is not None and ref_max is not None:
-                    is_low  = value < ref_min
-                    is_high = value > ref_max
+            # Now look ahead up to 6 lines for value, unit, range
+            value    = None
+            unit     = ""
+            ref_min  = None
+            ref_max  = None
+            ref_str  = None
+            operator = None
 
-                    entry = {
-                        "parameter": test_name,
-                        "value":     value,
-                        "unit":      unit,
-                        "min":       ref_min,
-                        "max":       ref_max,
-                        "status":    "HIGH" if is_high else
-                                     "LOW"  if is_low  else "NORMAL"
-                    }
-                    seen.add(test_name)
-                    if is_low or is_high:
-                        abnormal.append(entry)
-                    else:
-                        normal.append(entry)
+            lookahead_lines = lines[j:j+6]
 
-            except (ValueError, TypeError):
-                continue
+            for la_line in lookahead_lines:
+                la_line = la_line.strip()
+                if not la_line:
+                    continue
 
-        else:
-            # Try < or > pattern
-            match2 = lt_gt_pattern.match(line)
-            if match2:
-                test_name = match2.group(1).strip()
-                value_str = match2.group(2)
-                unit      = (match2.group(3) or "").strip()
-                ref_str   = match2.group(4)
+                # Check for reference range first (e.g. "13.00 - 17.00")
+                r_match = range_pattern.match(la_line) or \
+                          range_with_space.match(la_line)
+                if r_match and ref_min is None:
+                    ref_min = float(r_match.group(1))
+                    ref_max = float(r_match.group(2))
+                    continue
 
-                test_name = re.sub(r"\s*\(.*?\)\s*$", "", test_name).strip()
+                # Check for < or > range (e.g. "<2.00" or ">59")
+                lg_match = lt_gt_pattern.match(la_line)
+                if lg_match and ref_min is None and ref_max is None:
+                    operator = lg_match.group(1)
+                    ref_str  = float(lg_match.group(2))
+                    continue
+
+                # Check for unit
+                u_match = unit_patterns.match(la_line)
+                if u_match and not unit:
+                    unit = la_line
+                    continue
+
+                # Check for value (pure number)
+                n_match = number_pattern.match(la_line)
+                if n_match and value is None:
+                    try:
+                        value = float(la_line)
+                    except ValueError:
+                        pass
+                    continue
+
+                # If we hit another test name, stop
+                if (not la_line[0].isdigit()
+                        and not la_line.startswith("(")
+                        and not unit_patterns.match(la_line)
+                        and not range_pattern.match(la_line)
+                        and len(la_line) > 3):
+                    break
+
+            # Process if we found a value
+            if value is not None:
+                # Clean test name
+                test_name = re.sub(r"\s+", " ", test_name).strip()
                 test_name = re.sub(r"\*+", "", test_name).strip()
 
-                if len(test_name) < 3 or test_name in seen:
+                if test_name in seen or len(test_name) < 3:
+                    i += 1
                     continue
 
-                try:
-                    value    = float(value_str)
-                    ref_val  = float(ref_str[1:])
-                    operator = ref_str[0]
+                seen.add(test_name)
 
-                    if operator == "<":
-                        is_high = value >= ref_val
-                        entry   = {
-                            "parameter": test_name,
-                            "value":     value,
-                            "unit":      unit,
-                            "min":       None,
-                            "max":       ref_val,
-                            "status":    "HIGH" if is_high else "NORMAL"
-                        }
-                    else:
-                        is_low = value <= ref_val
-                        entry  = {
-                            "parameter": test_name,
-                            "value":     value,
-                            "unit":      unit,
-                            "min":       ref_val,
-                            "max":       None,
-                            "status":    "LOW" if is_low else "NORMAL"
-                        }
+                entry = {
+                    "parameter": test_name,
+                    "value":     value,
+                    "unit":      unit,
+                    "min":       ref_min,
+                    "max":       ref_max,
+                    "status":    "NORMAL"
+                }
 
-                    seen.add(test_name)
-                    if entry["status"] != "NORMAL":
-                        abnormal.append(entry)
-                    else:
-                        normal.append(entry)
+                if ref_min is not None and ref_max is not None:
+                    if value < ref_min:
+                        entry["status"] = "LOW"
+                    elif value > ref_max:
+                        entry["status"] = "HIGH"
 
-                except (ValueError, TypeError):
-                    continue
+                elif operator and ref_str is not None:
+                    entry["max"] = ref_str if operator == "<" else None
+                    entry["min"] = ref_str if operator == ">" else None
+                    if operator == "<" and value >= ref_str:
+                        entry["status"] = "HIGH"
+                    elif operator == ">" and value <= ref_str:
+                        entry["status"] = "LOW"
+
+                if entry["status"] != "NORMAL":
+                    abnormal.append(entry)
+                else:
+                    normal.append(entry)
+
+        i += 1
 
     return abnormal, normal
 
@@ -248,39 +274,45 @@ def calculate_urgency(abnormal_values):
 # ── AI symptom and disease suggestion via Anthropic API ──────────
 def get_ai_analysis(abnormal_values, user_symptoms=None, mode="symptoms"):
     """
-    Uses Claude API to suggest symptoms or diseases based on lab values.
-    mode = 'symptoms'  → suggest what symptoms patient may experience
-    mode = 'diseases'  → suggest possible conditions based on values + symptoms
-    mode = 'routine'   → advisory for routine checkup with some abnormal values
+    Uses Groq free API (Llama 3) to analyze lab values.
+    mode = 'symptoms'  → suggest symptoms patient may experience
+    mode = 'diseases'  → suggest possible conditions
+    mode = 'routine'   → advisory for routine checkup
     """
     if not abnormal_values:
         return None
 
-    # Build the abnormal values summary
+    from dotenv import load_dotenv
+    load_dotenv()
+    api_key = os.getenv("GROQ_API_KEY", "")
+
+    if not api_key:
+        return "AI analysis unavailable — Groq API key not configured."
+
+    # Build values summary
     values_text = "\n".join([
         f"- {v['parameter']}: {v['value']} {v['unit']} "
         f"({'HIGH' if v['status'] == 'HIGH' else 'LOW'}, "
-        f"normal range: {v.get('min', '?')} - {v.get('max', '?')})"
+        f"normal: {v.get('min','?')} - {v.get('max','?')})"
         for v in abnormal_values
     ])
 
     if mode == "symptoms":
-        prompt = f"""A patient has the following abnormal lab report values:
+        prompt = f"""A patient has these abnormal lab report values:
 
 {values_text}
 
 Based ONLY on these specific abnormal values, list the common symptoms 
-a patient might experience. Be specific and honest.
+a patient might experience. Be specific and medically accurate.
 
 Rules:
-- Only mention symptoms that are medically well-established for these specific values
-- Do not guess or hallucinate
-- Keep it simple and easy for a non-medical person to understand
-- Format as a bullet list
+- Only mention symptoms that are medically well-established for these values
+- Do not guess or make up symptoms
+- Keep language simple for a non-medical person
+- Format as a bullet list with brief explanation for each
 - Maximum 6-8 symptoms
-- End with: "Note: Not all patients experience all symptoms."
-
-Do not mention disease names here, only symptoms."""
+- End with exactly this line: "Note: Not all patients experience all symptoms."
+- Do NOT mention disease names here, only symptoms"""
 
     elif mode == "diseases":
         symptoms_text = user_symptoms if user_symptoms else "Not specified"
@@ -288,66 +320,70 @@ Do not mention disease names here, only symptoms."""
 
 {values_text}
 
-The patient reports experiencing these symptoms: {symptoms_text}
+The patient reports experiencing: {symptoms_text}
 
-Based on the combination of lab values AND reported symptoms, suggest possible conditions.
+Based on the combination of lab values AND reported symptoms,
+suggest possible medical conditions.
 
 Rules:
-- Only suggest conditions that are strongly supported by BOTH the lab values AND symptoms
-- Be honest about uncertainty — say "may indicate" not "you have"
-- List 2-4 most likely conditions
-- For each condition briefly explain which values/symptoms suggest it
-- Always end with the disclaimer: 
-  "IMPORTANT: These are possibilities only. A qualified doctor must examine you 
-   and interpret these results in the context of your full medical history."
+- Only suggest conditions strongly supported by BOTH lab values AND symptoms
+- Say "may indicate" or "could suggest" — never say "you have"
+- List 2-4 most likely conditions maximum
+- For each condition briefly explain which values and symptoms suggest it
 - Do not suggest rare or unlikely conditions
-- Do not be alarmist"""
+- Do not be alarmist
+- End with exactly this disclaimer:
+  "IMPORTANT: These are possibilities only. A qualified doctor must
+   examine you and interpret results in context of your full medical history.
+   Do not self-diagnose or self-medicate." """
 
     else:  # routine
-        prompt = f"""A patient had a routine health checkup. Their lab report shows 
-these values outside normal range:
+        prompt = f"""A patient had a routine health checkup.
+These values are outside normal range:
 
 {values_text}
 
-The patient reports no specific symptoms.
+The patient has no specific symptoms — this was a routine checkup.
 
-Give a brief, calm advisory:
-1. Which values need monitoring
+Give a brief, calm, helpful advisory:
+1. Which values need monitoring and why
 2. Simple lifestyle suggestions for each abnormal value
 3. Whether a doctor visit is recommended and how urgently
 
 Rules:
 - Be reassuring but honest
-- Keep language simple
-- Do not diagnose
-- End with disclaimer that a doctor should review these results"""
+- Keep language simple and friendly
+- Do not diagnose anything
+- Do not be alarmist
+- End with: "Please share these results with your doctor at your next visit." """
 
     try:
-        response = requests.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={"Content-Type": "application/json"},
-            json={
-                "model":      "claude-sonnet-4-20250514",
-                "max_tokens": 600,
-                "messages": [{"role": "user", "content": prompt}]
-            },
-            timeout=30
-        )
+        from groq import Groq
 
-        if response.status_code == 200:
-            data    = response.json()
-            content = data.get("content", [])
-            for block in content:
-                if block.get("type") == "text":
-                    return block["text"].strip()
-        else:
-            print(f"AI API error: {response.status_code}")
-            return None
+        client   = Groq(api_key=api_key)
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {
+                    "role":    "system",
+                    "content": "You are a helpful medical information assistant. "
+                               "You provide clear, accurate, honest medical information "
+                               "based on lab values. You never diagnose — you only "
+                               "inform and suggest consulting a doctor."
+                },
+                {
+                    "role":    "user",
+                    "content": prompt
+                }
+            ],
+            max_tokens=600,
+            temperature=0.3
+        )
+        return response.choices[0].message.content.strip()
 
     except Exception as e:
-        print(f"AI analysis error: {e}")
-        return None
-
+        print(f"Groq API error: {e}")
+        return "AI analysis temporarily unavailable. Please consult your doctor directly."
 
 # ── Medicine schedule generator ───────────────────────────────────
 def generate_medicine_schedule(drugs, entities):
