@@ -726,6 +726,9 @@ with tab2:
     
     with right2:
         if analyze_report_btn:
+            for key in ['ai_symptoms', 'ai_diseases']:
+                if key in st.session_state:
+                    del st.session_state[key]
             final_report_text = ""
 
             if report_input_type == "Upload File (PDF / Image)":
@@ -773,93 +776,208 @@ with tab2:
             elif report_file is not None or report_text_input.strip():
                 st.error("Could not extract text from the uploaded file. "
                         "Try pasting the values manually.")
-        
         # Display report results
-        if 'report_urgency' in st.session_state:
-            urgency  = st.session_state['report_urgency']
+        if st.session_state.get('report_abnormal') is not None:
             abnormal = st.session_state['report_abnormal']
             normal   = st.session_state['report_normal']
-            
-            # ── Urgency badge ─────────────────────────────────────
-            urgency_class = {
-                'urgent':   'urgency-urgent',
-                'soon':     'urgency-soon',
-                'normal':   'urgency-normal',
-                'routine':  'urgency-routine'
-            }.get(urgency['level'], 'urgency-normal')
-            
-            st.markdown(f"""
-            <div class='{urgency_class}'>
-                {urgency['color']}  {urgency['text']}
-            </div>
-            <div style='color:rgba(255,255,255,0.5); font-size:0.8rem;
-            text-align:center; margin-top:6px;'>
-                {urgency['reason']}
-            </div>
-            """, unsafe_allow_html=True)
-            
-            st.markdown("<br>", unsafe_allow_html=True)
-            
-            # ── Abnormal values ───────────────────────────────────
-            if abnormal:
+
+            # ── No abnormal values ────────────────────────────────
+            if not abnormal:
+                st.markdown("""
+                <div class='urgency-normal'>
+                    🟢 All Report Values Normal
+                </div>
+                <div style='color:rgba(255,255,255,0.5);font-size:0.85rem;
+                text-align:center;margin-top:8px;'>
+                    All tested parameters are within normal range.
+                    Continue healthy habits and routine checkups.
+                </div>
+                """, unsafe_allow_html=True)
+
+            else:
+                # ── Abnormal values table ─────────────────────────
                 st.markdown(
                     "<div class='section-header'>⚠️ Abnormal Values</div>",
                     unsafe_allow_html=True
                 )
+
+                import pandas as pd
+                table_data = []
                 for v in abnormal:
-                    status_class = ('value-status-high' if v['status'] == 'HIGH'
-                                    else 'value-status-low')
-                    status_icon  = '↑' if v['status'] == 'HIGH' else '↓'
-                    st.markdown(f"""
-                    <div class='value-abnormal'>
-                        <div class='value-label'>{v['parameter'].replace('_',' ').title()}</div>
-                        <div>
-                            <span class='value-number'>{v['value']} {v['unit']}</span>
-                            &nbsp;
-                            <span class='{status_class}'>
-                                {status_icon} {v['status']}
-                                (Normal: {v['min']}–{v['max']})
-                            </span>
-                        </div>
+                    ref_range = ""
+                    if v.get("min") and v.get("max"):
+                        ref_range = f"{v['min']} - {v['max']}"
+                    elif v.get("max"):
+                        ref_range = f"< {v['max']}"
+                    elif v.get("min"):
+                        ref_range = f"> {v['min']}"
+
+                    table_data.append({
+                        "Parameter":    v["parameter"],
+                        "Your Value":   f"{v['value']} {v['unit']}",
+                        "Normal Range": ref_range,
+                        "Status":       v["status"]
+                    })
+
+                df = pd.DataFrame(table_data)
+
+                # Style the table
+                def color_status(val):
+                    if val == "HIGH":
+                        return "background-color: #2d1515; color: #fca5a5; font-weight: bold"
+                    elif val == "LOW":
+                        return "background-color: #2d2500; color: #fde68a; font-weight: bold"
+                    return ""
+
+                styled = df.style.applymap(
+                    color_status, subset=["Status"]
+                ).set_properties(**{
+                    "background-color": "#1e2130",
+                    "color": "#e2e8f0",
+                    "border": "1px solid #374151"
+                })
+                st.dataframe(styled, use_container_width=True,
+                             hide_index=True)
+
+                st.markdown("<br>", unsafe_allow_html=True)
+
+                # ── AI suggests possible symptoms ─────────────────
+                if 'ai_symptoms' not in st.session_state:
+                    with st.spinner("Analyzing your report values..."):
+                        from src.report_generator import get_ai_analysis
+                        ai_symptoms = get_ai_analysis(
+                            abnormal, mode="symptoms"
+                        )
+                        st.session_state['ai_symptoms'] = ai_symptoms
+
+                if st.session_state.get('ai_symptoms'):
+                    st.markdown("""
+                    <div class='section-header'>
+                        🩺 Possible Symptoms Based on Your Report
                     </div>
                     """, unsafe_allow_html=True)
-            
-            # ── Normal values ─────────────────────────────────────
-            if normal:
-                st.markdown(
-                    "<div class='section-header' style='margin-top:1rem'>"
-                    "✅ Normal Values</div>",
-                    unsafe_allow_html=True
-                )
-                cols = st.columns(2)
-                for i, v in enumerate(normal):
-                    with cols[i % 2]:
-                        st.markdown(f"""
-                        <div class='value-normal'>
-                            <div class='value-label'>
-                                {v['parameter'].replace('_',' ').title()}
-                            </div>
-                            <div>
-                                <span class='value-number'>
-                                    {v['value']} {v['unit']}
-                                </span>
-                                &nbsp;
-                                <span class='value-status-ok'>✓ NORMAL</span>
-                            </div>
+                    st.markdown(f"""
+                    <div class='dashboard-card' style='color:#cbd5e1;
+                    font-size:0.9rem;line-height:1.7;'>
+                        {st.session_state['ai_symptoms'].replace(chr(10), '<br>')}
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    st.markdown("<br>", unsafe_allow_html=True)
+
+                    # ── Ask user about symptoms ───────────────────
+                    st.markdown("""
+                    <div style='color:#e2e8f0;font-size:0.95rem;
+                    font-weight:500;margin-bottom:8px;'>
+                        Are you experiencing any of these symptoms?
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    symptom_choice = st.radio(
+                        "Symptom confirmation",
+                        ["Yes, I have some of these symptoms",
+                         "No, I have different symptoms",
+                         "No symptoms at all (routine checkup)"],
+                        key="symptom_choice",
+                        label_visibility="collapsed"
+                    )
+
+                    # ── Branch based on choice ────────────────────
+                    if symptom_choice == "Yes, I have some of these symptoms":
+                        if st.button("Get Possible Conditions",
+                                     key="get_diseases"):
+                            with st.spinner("Analyzing..."):
+                                from src.report_generator import get_ai_analysis
+                                ai_diseases = get_ai_analysis(
+                                    abnormal,
+                                    user_symptoms="Patient confirms experiencing the suggested symptoms",
+                                    mode="diseases"
+                                )
+                                st.session_state['ai_diseases'] = ai_diseases
+
+                    elif symptom_choice == "No, I have different symptoms":
+                        user_symptoms = st.text_area(
+                            "Describe your symptoms",
+                            placeholder="Example: I have been feeling very tired, "
+                                        "my skin looks slightly yellow, "
+                                        "I have pain in my upper right abdomen...",
+                            height=100,
+                            key="user_symptoms_input"
+                        )
+                        if st.button("Analyze My Symptoms",
+                                     key="analyze_symptoms"):
+                            if user_symptoms.strip() and \
+                               user_symptoms.strip().lower() not in \
+                               ["nil", "no", "none", "nothing"]:
+                                with st.spinner("Analyzing your symptoms..."):
+                                    from src.report_generator import get_ai_analysis
+                                    ai_diseases = get_ai_analysis(
+                                        abnormal,
+                                        user_symptoms=user_symptoms,
+                                        mode="diseases"
+                                    )
+                                    st.session_state['ai_diseases'] = ai_diseases
+                            else:
+                                # Nil symptoms — routine advisory
+                                with st.spinner("Generating advisory..."):
+                                    from src.report_generator import get_ai_analysis
+                                    ai_diseases = get_ai_analysis(
+                                        abnormal, mode="routine"
+                                    )
+                                    st.session_state['ai_diseases'] = ai_diseases
+
+                    else:  # No symptoms — routine checkup
+                        if st.button("Get Routine Advisory",
+                                     key="get_routine"):
+                            with st.spinner("Generating advisory..."):
+                                from src.report_generator import get_ai_analysis
+                                ai_diseases = get_ai_analysis(
+                                    abnormal, mode="routine"
+                                )
+                                st.session_state['ai_diseases'] = ai_diseases
+
+                    # ── Show AI disease/advisory output ───────────
+                    if st.session_state.get('ai_diseases'):
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        st.markdown("""
+                        <div class='section-header'>
+                            🔬 Analysis & Recommendations
                         </div>
                         """, unsafe_allow_html=True)
-            
-            if not abnormal and not normal:
-                st.info("No standard lab values detected. "
-                        "Try pasting values in format: "
-                        "'Parameter: value unit'")
-            
+                        st.markdown(f"""
+                        <div class='dashboard-card'
+                        style='color:#cbd5e1;font-size:0.88rem;line-height:1.8;'>
+                            {st.session_state['ai_diseases'].replace(chr(10), '<br>')}
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    # ── Urgency ───────────────────────────────────
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    urgency = st.session_state.get('report_urgency', {})
+                    if urgency:
+                        urgency_class = {
+                            'urgent':  'urgency-urgent',
+                            'soon':    'urgency-soon',
+                            'normal':  'urgency-normal',
+                            'routine': 'urgency-routine'
+                        }.get(urgency.get('level', 'routine'),
+                              'urgency-routine')
+                        st.markdown(f"""
+                        <div class='{urgency_class}'>
+                            {urgency.get('color','')} {urgency.get('text','N/A')}
+                        </div>
+                        <div style='color:rgba(255,255,255,0.5);
+                        font-size:0.8rem;text-align:center;margin-top:6px;'>
+                            {urgency.get('reason','')}
+                        </div>
+                        """, unsafe_allow_html=True)
+
             # ── Disclaimer ────────────────────────────────────────
             st.markdown("""
             <div class='disclaimer'>
-                ⚠️ This analysis is AI-generated. These are not medical 
-                diagnoses. Always consult a qualified doctor for proper 
-                interpretation of your reports.
+                ⚠️ This analysis is AI-generated and for informational
+                purposes only. These are NOT diagnoses. Always consult
+                a qualified doctor for proper medical interpretation.
             </div>
             """, unsafe_allow_html=True)
 
