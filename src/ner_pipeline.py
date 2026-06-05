@@ -33,21 +33,26 @@ def detect_prescription_type(text):
 
 # ── Clean prescription text ───────────────────────────────────────
 def clean_prescription_text(text):
+    # Remove specific footer lines only — NOT with DOTALL
+    # DOTALL was deleting all medicine lines after the URL
     footer_patterns = [
-        r"Made by Prescription Maker.*",
-        r"www\..*\.com.*",
-        r"digitalprescriptionmaker.*",
-        r"ECG\s*/\s*NEBULISATION.*",
-        r"PLEASE BRING YOUR PRESCRIPTIONS.*",
-        r"Facilities For.*",
-        r"FULL EYE CHECKUP.*",
-        r"SPECTACLES.*",
-        r"CONTACT LENS.*",
+        r"Made by Prescription Maker[^\n]*",
+        r"\[?www\.[^\s\]]+\][^\n]*",
+        r"https?://[^\s\n]+",
+        r"digitalprescriptionmaker[^\n]*",
+        r"ECG\s*/\s*NEBULISATION[^\n]*",
+        r"PLEASE BRING YOUR PRESCRIPTIONS[^\n]*",
+        r"Facilities For[^\n]*",
+        r"FULL EYE CHECKUP[^\n]*",
+        r"SPECTACLES[^\n]*",
+        r"CONTACT LENS[^\n]*",
     ]
     cleaned = text
     for pat in footer_patterns:
-        cleaned = re.sub(pat, "", cleaned,
-                         flags=re.IGNORECASE | re.DOTALL)
+        cleaned = re.sub(pat, "", cleaned, flags=re.IGNORECASE)
+
+    # Remove multiple blank lines
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     cleaned = re.sub(r" {2,}", " ", cleaned)
     return cleaned.strip()
 

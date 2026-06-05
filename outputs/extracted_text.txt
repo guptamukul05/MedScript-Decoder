@@ -1,27 +1,706 @@
-Date: 19 Jan 2026
-Dr. P C Agarwal
-M.B.B.S. (DELHI -1968)
-A-1/301, Safdarjung Enclave, New Delhi - 110029
-Reg. No. DMC-9058
-9811598606
-011-47034286
-Consultation by appointment only 
-TIMINGS: (WEEK DAYS ).               11.30AM --1.00PM/6.30PM--8.00PM
-Dr. P C Agarwal
-M.B.B.S. (DELHI -1968)
-Reg. No. DMC-9058
-Made by Prescription Maker
- www.digitalprescriptionmaker.com 
-VISHAL GUPTA 
-•  TAB CEPODEM 200 ----  15 days
-After breakfast and dinner 
-• TAB PANTOCID 40 --  15 days
-After breakfast and dinner 
-• TAB LORFAST AM ---- 15 days
- after breakfast and dinner 
-• CAP NATVIE 400 ---- 15 days
-After dinner 
-• FLOMIST NASAL SPRAY---- 15 days
-2 puffs into each nostril twice daily ( most important)
-Advice/Referrals
-Review on 15th day for further treatment.
+Report Status    
+Male
+24 Years
+:
+:
+:
+:
+Age
+Gender
+Reported        
+P
+17/1/2026  10:17:00AM
+dr p c agarwal
+495105872
+Mr. VISHAL  GUPTA
+:
+:
+:
+:
+:
+Name        
+Lab No.    
+Ref By 
+Collected       
+A/c Status 
+Final
+17/1/2026  1:12:18PM
+Collected at    :
+Processed at      :
+GREEN PARK
+J-4, Green Park Main, New Delhi - 110016 
+DELHI 
+LPL-VASANT KUNJ LAB
+NELSON MANDELA MARG, BUILDING No.1
+L.S.C., SECTOR-B, POCKET-7, VASANT KU
+NEW DELHI-110070
+Test Report      
+Test Name
+Results
+Units
+Bio. Ref. Interval
+HEMOGRAM
+Hemoglobin
+(Photometry)
+ 13.00 - 17.00 
+g/dL
+13.20
+Packed Cell Volume (PCV)
+(Calculated)
+ 40.00 - 50.00 
+%
+38.90
+RBC Count
+(Electrical impedence)
+ 4.50 - 5.50 
+mill/mm3
+4.64
+MCV
+(Electrical impedence)
+ 83.00 - 101.00 
+fL
+83.80
+Mentzer Index
+(Calculated)
+  
+18.1
+MCH
+(Calculated)
+ 27.00 - 32.00 
+pg
+28.40
+MCHC
+(Calculated)
+ 31.50 - 34.50 
+g/dL
+33.90
+Red Cell Distribution Width (RDW)
+(Electrical Impedence)
+ 11.60 - 14.00 
+%
+14.60
+Total Leukocyte Count (TLC)
+(Electrical Impedance)
+ 4.00 - 10.00 
+thou/mm3
+6.00
+Differential Leucocyte Count (DLC)
+ 40.00 - 80.00 
+Segmented Neutrophils
+(Electrical impedence)
+%
+52.40
+ 20.00 - 40.00 
+Lymphocytes
+(VCS) Technology)
+%
+38.50
+ 2.00 - 10.00 
+Monocytes
+(VCS) Technology)
+%
+6.10
+ 1.00 - 6.00 
+Eosinophils
+(VCS) Technology)
+%
+2.70
+ <2.00 
+Basophils
+(VCS) Technology)
+%
+0.30
+Absolute Leucocyte Count
+ 2.00 - 7.00 
+Neutrophils
+(Calculated)
+thou/mm3
+3.14
+ 1.00 - 3.00 
+Lymphocytes
+(Calculated)
+thou/mm3
+2.31
+ 0.20 - 1.00 
+Monocytes
+(Calculated)
+thou/mm3
+0.37
+ 0.02 - 0.50 
+Eosinophils
+(Calculated)
+thou/mm3
+0.16
+*495105872*
+Page 1 of 7
+Report Status    
+Male
+24 Years
+:
+:
+:
+:
+Age
+Gender
+Reported        
+P
+17/1/2026  10:17:00AM
+dr p c agarwal
+495105872
+Mr. VISHAL  GUPTA
+:
+:
+:
+:
+:
+Name        
+Lab No.    
+Ref By 
+Collected       
+A/c Status 
+Final
+17/1/2026  1:12:18PM
+Collected at    :
+Processed at      :
+GREEN PARK
+J-4, Green Park Main, New Delhi - 110016 
+DELHI 
+LPL-VASANT KUNJ LAB
+NELSON MANDELA MARG, BUILDING No.1
+L.S.C., SECTOR-B, POCKET-7, VASANT KU
+NEW DELHI-110070
+Test Report      
+Test Name
+Results
+Units
+Bio. Ref. Interval
+ 0.02 - 0.10 
+Basophils
+(Calculated)
+thou/mm3
+0.02
+Platelet Count
+(Electrical impedence)
+ 150.00 - 410.00 
+thou/mm3
+153
+Mean Platelet Volume
+(Electrical impedence)
+ 6.5 - 12.0 
+fL
+11.3
+E.S.R.
+(Capillary photometry)
+ 0 - 15 
+mm/hr
+2
+Comment
+In anaemic conditions Mentzer index is used to differentiate Iron Deficiency Anaemia from Beta- Thalassemia 
+trait. If Mentzer Index value is >13, there is probability of Iron Deficiency Anaemia. A value <13 indicates likelihood 
+of Beta- Thalassemia trait and Hb HPLC is advised to rule out the Thalassemia trait.
+Note
+1.
+As per the recommendation of International council for Standardization in Hematology, the differential 
+leucocyte counts are additionally being reported as absolute numbers of each cell in per unit volume of 
+blood 
+2.
+Test conducted on EDTA whole blood
+anisocytosis +,
+Predominantly Normocytic normochromic RBCs
+WBC is normal in number.
+Platelets are adequate.
+*495105872*
+Page 2 of 7
+Report Status    
+Male
+24 Years
+:
+:
+:
+:
+Age
+Gender
+Reported        
+P
+17/1/2026  10:17:00AM
+dr p c agarwal
+495105872
+Mr. VISHAL  GUPTA
+:
+:
+:
+:
+:
+Name        
+Lab No.    
+Ref By 
+Collected       
+A/c Status 
+Final
+17/1/2026  1:12:18PM
+Collected at    :
+Processed at      :
+GREEN PARK
+J-4, Green Park Main, New Delhi - 110016 
+DELHI 
+LPL-VASANT KUNJ LAB
+NELSON MANDELA MARG, BUILDING No.1, 
+L.S.C., SECTOR-B, POCKET-7, VASANT 
+KUNJ, NEW DELHI-110070
+Test Report 
+Test Name
+Results
+Units
+Bio. Ref. Interval
+LIVER & KIDNEY FUNCTION TEST (LFT & KFT)
+0.80
+Creatinine
+(Modified Jaffe,Kinetic)
+ 0.70 - 1.30 
+mg/dL
+126
+GFR Estimated
+(CKD EPI Equation 2021)
+ >59 
+mL/min/1.73m2
+G1
+GFR Category
+(KDIGO Guideline 2012)
+  
+32.36
+Urea
+(Urease UV)
+ 13.00 - 43.00 
+mg/dL
+15.11
+Urea Nitrogen Blood
+(Calculated)
+ 6.00 - 20.00 
+mg/dL
+19
+BUN/Creatinine Ratio
+(Calculated)
+  
+7.80
+Uric Acid
+(Uricase)
+ 3.50 - 7.20 
+mg/dL
+50.0
+AST (SGOT)
+(IFCC,without P5P)
+ 15.00 - 40.00 
+U/L
+99.0
+ALT (SGPT)
+(IFCC,without P5P)
+ 10.00 - 49.00 
+U/L
+0.51
+AST:ALT Ratio
+(Calculated)
+ <1.00 
+35.0
+GGTP
+(IFCC,L-y-glutamyl-3-carboxy-4-nitroanilide)
+ 0 - 73 
+U/L
+81.00
+Alkaline Phosphatase (ALP)
+(IFCC-AMP)
+ 30.00 - 120.00 
+U/L
+1.37
+Bilirubin Total
+(Oxidation)
+ 0.30 - 1.20 
+mg/dL
+0.47
+Bilirubin Direct
+(Oxidation)
+ <0.3 
+mg/dL
+0.90
+Bilirubin Indirect
+(Calculated)
+ <1.10 
+mg/dL
+7.10
+Total Protein
+(Biuret)
+ 5.70 - 8.20 
+g/dL
+4.70
+Albumin
+(BCG)
+ 3.20 - 4.80 
+g/dL
+2.40
+Globulin(Calculated)
+ 2.0 - 3.5 
+gm/dL
+1.96
+A : G Ratio
+(Calculated)
+ 0.90 - 2.00 
+*495105872*
+Page 3 of 7
+Report Status    
+Male
+24 Years
+:
+:
+:
+:
+Age
+Gender
+Reported        
+P
+17/1/2026  10:17:00AM
+dr p c agarwal
+495105872
+Mr. VISHAL  GUPTA
+:
+:
+:
+:
+:
+Name        
+Lab No.    
+Ref By 
+Collected       
+A/c Status 
+Final
+17/1/2026  1:12:18PM
+Collected at    :
+Processed at      :
+GREEN PARK
+J-4, Green Park Main, New Delhi - 110016 
+DELHI 
+LPL-VASANT KUNJ LAB
+NELSON MANDELA MARG, BUILDING No.1, 
+L.S.C., SECTOR-B, POCKET-7, VASANT 
+KUNJ, NEW DELHI-110070
+Test Report 
+Test Name
+Results
+Units
+Bio. Ref. Interval
+9.49
+Calcium, Total
+(Arsenazo III)
+ 8.70 - 10.40 
+mg/dL
+3.50
+Phosphorus
+(Phosphomolybdate UV)
+ 2.40 - 5.10 
+mg/dL
+139.50
+Sodium
+(Indirect ISE)
+ 136.00 - 145.00 
+mEq/L
+4.33
+Potassium
+(Indirect ISE)
+ 3.50 - 5.10 
+mEq/L
+103.10
+Chloride
+(Indirect ISE)
+ 98.00 - 107.00 
+mEq/L
+Note
+1.
+Estimated GFR  (eGFR) calculated using the 2021 CKD-EPI creatinine equation and GFR Category 
+reported as per KDIGO guideline 2012. 
+2.
+eGFR category G1 or G2 does not fulfil the criteria for CKD, in the absence of evidence of kidney 
+damage
+3.
+The BUN-to-creatinine ratio is used to differentiate prerenal and postrenal azotemia from renal 
+azotemia. Because of considerable variability, it should be used only as a rough guide. Normally, the 
+BUN/creatinine ratio is about 10:1
+4.
+Test conducted in Serum
+*495105872*
+Page 4 of 7
+Report Status    
+Male
+24 Years
+:
+:
+:
+:
+Age
+Gender
+Reported        
+P
+17/1/2026  10:17:00AM
+dr p c agarwal
+495105872
+Mr. VISHAL  GUPTA
+:
+:
+:
+:
+:
+Name        
+Lab No.    
+Ref By 
+Collected       
+A/c Status 
+Final
+17/1/2026  1:12:18PM
+LPL-VASANT KUNJ LAB
+NELSON MANDELA MARG, BUILDING No.1, 
+L.S.C., SECTOR-B, POCKET-7, VASANT 
+KUNJ, NEW DELHI-110070
+:
+:
+Collected at     
+Processed at      
+GREEN PARK
+J-4, Green Park Main, New Delhi - 110016 
+DELHI 
+Test Report      
+Test Name
+Results
+Units
+Bio. Ref. Interval
+IMMUNOGLOBULIN IgE
+(CLIA)
+IU/mL
+0.00 - 158.00
+272.90
+Result Rechecked,
+Please Correlate Clinically.
+Note 
+1.
+Normal levels of IgE do not rule out possibility of IgE dependent allergies as the diagnostic  sensitivity of
+the test depends upon elapsed time between exposure to an allergen and testing, patient age and
+affected target organs.
+2.
+No close correlation has been demonstrated between severity of allergic reaction and IgE levels.
+3.
+Test conducted on serum
+TSH (THYROID STIMULATING HORMONE) 
+ULTRASENSITIVE, SERUM
+(CLIA)
+µIU/mL
+0.550 - 4.780
+2.104
+Note
+1.
+TSH levels are subject to circadian variation, reaching peak levels between 2 - 4.a.m. and at a 
+minimum between 6-10 pm . The variation is of the order of 50%, hence time of the day has influence 
+on the measured serum TSH concentrations.
+2.
+Values <0.03 µIU/mL need to be clinically correlated due to presence of a rare TSH variant in some 
+individuals.
+3.
+Transient increase in TSH levels or abnormal TSH levels can be seen in various nonthyroidal 
+diseases. Simultaneous measurement of TSH with free T4 is useful in evaluating the differential 
+diagnosis
+*495105872*
+Page 5 of 7
+Report Status    
+Male
+24 Years
+:
+:
+:
+:
+Age
+Gender
+Reported        
+P
+17/1/2026  10:17:00AM
+dr p c agarwal
+495105872
+Mr. VISHAL  GUPTA
+:
+:
+:
+:
+:
+Name        
+Lab No.    
+Ref By 
+Collected       
+A/c Status 
+Final
+17/1/2026  1:12:18PM
+Collected at    
+:
+Processed at      
+: GREEN PARK
+J-4, Green Park Main, New Delhi - 110016 
+DELHI 
+LPL-VASANT KUNJ LAB
+NELSON MANDELA MARG, BUILDING No.1, 
+L.S.C., SECTOR-B, POCKET-7, VASANT 
+KUNJ, NEW DELHI-110070
+Test Report      
+Test Name
+Results
+Units
+Bio. Ref. Interval
+HbA1c
+(HPLC, NGSP certified)
+HbA1c
+%
+4.00 - 5.60
+5.6
+Estimated average glucose (eAG)
+mg/dL
+114
+Interpretation
+HbA1c result is suggestive of non diabetic adults (>=18 years)/ well controlled Diabetes in a known Diabetic
+Interpretation as per American Diabetes Association (ADA) Guidelines
+------------------------------------------------------------------------------------------
+| Reference Group | Non diabetic      | At risk       | Diagnosing  | Therapeutic goals    |
+|                 | adults >=18 years | (Prediabetes) | Diabetes    | for glycemic control |
+| ----------------|-------------------|---------------|-------------|----------------------|
+| HbA1c in %      | 4.0-5.6           | 5.7-6.4       | >= 6.5      | <7.0                 |
+------------------------------------------------------------------------------------------
+Note
+1.
+Presence of Hemoglobin variants and/or conditions that affect red cell turnover must be considered, 
+particularly when the HbA1C result does not correlate with the patient’s blood glucose levels.
+2.
+Test conducted in EDTA Whole blood
+ ---------------------------------------------------------------------------------
+| FACTORS THAT INTERFERE WITH HbA1C    | FACTORS THAT AFFECT INTERPRETATION       |
+| MEASUREMENT                          | OF HBA1C RESULTS                         |
+|--------------------------------------|------------------------------------------|
+| Hemoglobin variants,elevated fetal   | Any condition that shortens erythrocyte  |
+| hemoglobin (HbF) and chemically      | survival or decreases mean erythrocyte   |
+| modified derivatives of hemoglobin   | age (e.g.,recovery from acute blood loss,| 
+| (e.g. carbamylated Hb in patients    | hemolytic anemia, HbSS, HbCC, and HbSC)  |
+| with renal failure) can affect the   | will falsely lower HbA1c test results    |
+| accuracy of HbA1c measurements       | regardless of the assay method used.Iron | 
+|                                      | deficiency anemia is associated with     | 
+|                                      | higher HbA1c                             |
+ ---------------------------------------------------------------------------------
+Dr Rajni Anand
+MD  (Pathology)
+Consultant Pathologist
+Dr.Divya
+MD Biochemistry
+Consultant Biochemist                           
+Dr Lal PathLabs Ltd
+Dr Gaurav Jyoti Phukan
+DCP, Pathology
+Chief of Laboratory                            
+Dr Lal PathLabs Ltd
+Dr Rachna Malik
+MD, Pathology
+Consultant Pathologist                          
+Dr Lal PathLabs Ltd
+*495105872*
+Page 6 of 7
+Report Status    
+Male
+24 Years
+:
+:
+:
+:
+Age
+Gender
+Reported        
+P
+17/1/2026  10:17:00AM
+dr p c agarwal
+495105872
+Mr. VISHAL  GUPTA
+:
+:
+:
+:
+:
+Name        
+Lab No.    
+Ref By 
+Collected       
+A/c Status 
+Final
+17/1/2026  1:12:18PM
+Collected at    
+:
+Processed at      
+: GREEN PARK
+J-4, Green Park Main, New Delhi - 110016 
+DELHI 
+LPL-VASANT KUNJ LAB
+NELSON MANDELA MARG, BUILDING No.1, 
+L.S.C., SECTOR-B, POCKET-7, VASANT 
+KUNJ, NEW DELHI-110070
+Test Report      
+Test Name
+Results
+Units
+Bio. Ref. Interval
+-------------------------------End of report --------------------------------
+AHEEEHAPMAAPGNLFAAOIIGLMBJKMFGDONKKMEGPJJGCJOPAHEEEHA
+BNFFFNBPACJDAHBOBHECBLEHAHFHAHFLAGJDAHJLIGAPMPBNFFFNB
+FNCHFDFNJEDBMHLJCMGEGFKFGEHCHJBCOFHCBLHJOAKEHKFDEDHOL
+NJPMIEFGCAJGLHHPPKEOOIIOMGFKODIDIFNKHLNGKNCHHKNGHBHCD
+BFJAPCFIPCDDOLCEBGOPLOIJCKPHKDKEMFEPFDGKMFCHHDNKBCDKG
+NJPFGNFGAMEHCBGNBKIEDIHGGOJNDEDPOEMEAKEPMABAEKMKBKLMC
+PEMFAHFHAOBHLPLAPGECNFJDAHFHAKALKCNDEINFMKIBAHFHACHEL
+GAOBDDFCHLGEMPPDIOKHGHLOGFHFFGCBKKNFCMNDKAKBCDGHCHDLL
+PECOIIFOEOPAJKEEADPMMLPKHPKBHABBPFFEBANEOFCIBACDIHHDK
+EKIINDFDKECNEOCDFBONLNLKKKLGNCKGIMNKBEEKINKONJKKCGDDK
+BECBNNFBANLEDAEHKFAOFGPKHKLMNLAOOMNCADNMLABKLBOAAPBMD
+MNNFNNEPCNAELFMGGOILPOMBAHFHAAAHKCNDCKNOLMCIAHFHACHKP
+APBBBPAPBMDFDHCCEPEJCIFJBCHGEFCFNGMAFFNJMGKFHBDDEFHMJ
+HHHHHHHPHPHPPPPPHPPPPPHHHHPHPHHHPHPHHPHHPPPPHHPPHHHPP
+Authenticity assured - scan the QR code to access the original report from our verified database
+IMPORTANT INSTRUCTIONS
+ŸTest results released pertain to the specimen submitted.ŸAll test results are dependent on the quality of the sample received by the Laboratory . 
+ŸLaboratory investigations are only a tool to facilitate in arriving at a diagnosis and should be clinically correlated by the Referring Physician .ŸReport 
+delivery may be delayed due to unforeseen circumstances. Inconvenience is regretted .ŸCertain tests may require further testing at additional cost 
+for 
+derivation 
+of 
+exact 
+value. 
+Kindly 
+submit 
+request 
+within 
+72 hours 
+post 
+reporting.ŸTest 
+results 
+may 
+show 
+interlaboratory 
+variations.ŸThe 
+Courts/Forum at Delhi shall have exclusive jurisdiction in all disputes /claims concerning the test(s) & or results of test(s).ŸTest results are not valid 
+for 
+medico 
+legal 
+purposes.ŸThis 
+is 
+computer 
+generated 
+medical 
+diagnostic 
+report 
+that 
+has 
+been 
+validated 
+by 
+Authorized 
+Medical 
+Practitioner/Doctor.ŸThe report does not need physical signature. 
+(#) Sample drawn from outside source.
+If Test results are alarming or unexpected, client is advised to contact the Customer Care immediately for possible remedial action. 
+Tel: +91-11-49885050,Fax: - +91-11-2788-2134, E-mail: lalpathlabs@lalpathlabs.com 
+*495105872*
+Page 7 of 7

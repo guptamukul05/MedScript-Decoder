@@ -572,10 +572,7 @@ with tab1:
         if 'pres_report' in st.session_state:
             report   = st.session_state['pres_report']
             entities = st.session_state['pres_entities']
-            # DEBUG — remove after fixing
-            st.write("Medicines in report:", len(report.get('medicines', [])))
-            st.write("Medicines in entities:", len(entities.get('medicines', [])))
-            st.write("Entity drugs:", entities.get('drugs', []))
+            
             
             # ── Extracted text ────────────────────────────────────
             with st.expander("📄 Extracted Text", expanded=False):
@@ -683,46 +680,45 @@ with tab2:
     left2, right2 = st.columns([1, 1], gap="large")
     
     with left2:
+        report_file       = None
+        report_text_input = ""
         st.markdown("""
         <div class='dashboard-card'>
             <div class='section-header'>📤 Upload Medical Report</div>
         </div>
         """, unsafe_allow_html=True)
-        
         report_input_type = st.radio(
             "Input type",
-            ["Upload Image", "Paste Text"],
+            ["Upload File (PDF / Image)", "Paste Text"],
             horizontal=True,
+            index=0,
             key="report_input_type"
         )
-        
         report_text_input = ""
-        
-        if report_input_type == "Upload Image":
+        if report_input_type == "Upload File (PDF / Image)":
             report_file = st.file_uploader(
-                "Upload medical report image",
-                type=["jpg","jpeg","png","pdf","bmp"],
+                "Upload medical report (PDF or Image)",
+                type=["jpg", "jpeg", "png", "bmp", "pdf"],
                 key="report_image"
             )
-            if report_file and report_file.type != "application/pdf":
-                report_img = Image.open(report_file)
-                st.image(report_img, caption="Uploaded Report",
-                         use_column_width=True)
-                
+            if report_file:
+                if report_file.type == "application/pdf":
+                    st.success(f"✅ PDF uploaded: {report_file.name}")
+                else:
+                    st.image(Image.open(report_file),
+                            caption="Uploaded Report",
+                            use_container_width=True)
         else:
             report_text_input = st.text_area(
                 "Paste report values here",
-                placeholder="""Example:
-Hemoglobin: 11.2 g/dL
-Blood Sugar Fasting: 126 mg/dL
-TSH: 6.8 mIU/L
-Platelet Count: 180 thousand/uL
-Creatinine: 0.9 mg/dL
-Cholesterol: 210 mg/dL""",
+                placeholder="""Hemoglobin: 11.2 g/dL
+        Blood Sugar Fasting: 126 mg/dL
+        TSH: 6.8 mIU/L
+        Platelet Count: 180 thousand/uL
+        Creatinine: 0.9 mg/dL""",
                 height=250,
                 key="report_text"
             )
-        
         analyze_report_btn = st.button(
             "🔬  Analyze Report",
             key="analyze_report"
@@ -730,47 +726,53 @@ Cholesterol: 210 mg/dL""",
     
     with right2:
         if analyze_report_btn:
-            # Get text from image or text area
             final_report_text = ""
-            
-            if report_input_type == "Upload Image" and report_file:
-                with st.spinner("Extracting text from report image..."):
-                    with tempfile.NamedTemporaryFile(
-                        delete=False, suffix=".jpg"
-                    ) as tmp:
-                        tmp.write(report_file.getvalue())
-                        tmp_path = tmp.name
-                    final_report_text = run_ocr_pipeline(tmp_path)
-                    os.unlink(tmp_path)
+
+            if report_input_type == "Upload File (PDF / Image)":
+                if report_file is not None:
+                    with st.spinner("Extracting text from report..."):
+                        import tempfile
+                        suffix = ".pdf" if report_file.type == "application/pdf" \
+                                else ".jpg"
+                        with tempfile.NamedTemporaryFile(
+                            delete=False, suffix=suffix
+                        ) as tmp:
+                            tmp.write(report_file.getvalue())
+                            tmp_path = tmp.name
+                        final_report_text, _ = run_ocr_pipeline(tmp_path)
+                        os.unlink(tmp_path)
+                else:
+                    st.error("Please upload a report file first.")
             else:
                 final_report_text = report_text_input
-            
-            if not final_report_text.strip():
-                st.error("Please upload a report image or paste report values.")
-            else:
+
+            if final_report_text and final_report_text.strip():
                 with st.spinner("Analyzing report values..."):
                     progress2 = st.progress(0)
                     status2   = st.empty()
-                    
+
                     status2.markdown("""
                     <div style='color:#a78bfa; font-size:0.9rem;'>
                         🔍 Extracting values from report...
                     </div>""", unsafe_allow_html=True)
                     progress2.progress(40)
-                    
+
                     abnormal, normal = analyze_report_values(final_report_text)
-                    
+
                     from src.report_generator import calculate_urgency
                     urgency = calculate_urgency(abnormal)
-                    
+
                     progress2.progress(100)
                     status2.empty()
                     progress2.empty()
-                
+
                 st.session_state['report_abnormal'] = abnormal
                 st.session_state['report_normal']   = normal
                 st.session_state['report_urgency']  = urgency
                 st.session_state['report_text_raw'] = final_report_text
+            elif report_file is not None or report_text_input.strip():
+                st.error("Could not extract text from the uploaded file. "
+                        "Try pasting the values manually.")
         
         # Display report results
         if 'report_urgency' in st.session_state:
