@@ -545,3 +545,144 @@ def generate_full_report(entities, ocr_text="", report_text=""):
 
     print("Patient report generated successfully")
     return report
+def generate_ics_calendar(medicines, start_date_str):
+    """
+    Generates a .ics calendar file with medicine reminders.
+    Each reminder includes medicine name, dosage, timing, food instructions.
+    Repeats daily for the medicine duration.
+    Last dose gets a special reminder message.
+    """
+    from datetime import datetime, timedelta
+    import uuid
+
+    # Parse start date
+    try:
+        start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
+    except ValueError:
+        start_date = datetime.now()
+
+    # Timing to hour mapping
+    timing_hours = {
+        "morning (after breakfast)": (8, 30),
+        "morning":                   (8, 30),
+        "afternoon (after lunch)":   (13, 30),
+        "afternoon":                 (13, 30),
+        "night (after dinner)":      (21, 0),
+        "night":                     (21, 0),
+        "evening":                   (19, 0),
+        "at bedtime":                (22, 0),
+        "as needed (sos)":           (9, 0),
+        "as directed by doctor":     (9, 0),
+    }
+
+    ics_lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//MedScript Decoder//Medicine Reminders//EN",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        "X-WR-CALNAME:Medicine Reminders",
+        "X-WR-TIMEZONE:Asia/Kolkata",
+    ]
+
+    total_events = 0
+
+    for med in medicines:
+        name     = med.get("name", "Medicine").title()
+        dosage   = med.get("dosage", "As prescribed")
+        timings  = med.get("timing", ["Morning"])
+        duration = med.get("duration", "As directed")
+        form     = med.get("form", "Tab")
+        freq     = med.get("frequency", "As directed")
+
+        # Parse duration into number of days
+        dur_match = re.search(r"(\d+)\s*(day|days|week|weeks|month|months)",
+                              duration, re.IGNORECASE)
+        if dur_match:
+            num  = int(dur_match.group(1))
+            unit = dur_match.group(2).lower()
+            if "week" in unit:
+                num_days = num * 7
+            elif "month" in unit:
+                num_days = num * 30
+            else:
+                num_days = num
+        else:
+            num_days = 7  # Default 7 days if duration unclear
+
+        # Food instruction
+        food_note = "Take after food" if med.get("with_food", True) \
+                    else "Take before food"
+
+        # Create event for each timing slot for each day
+        for day_offset in range(num_days):
+            current_date = start_date + timedelta(days=day_offset)
+            is_last_day  = (day_offset == num_days - 1)
+
+            for timing_label in timings:
+                timing_lower = timing_label.lower().strip()
+                hour, minute = timing_hours.get(
+                    timing_lower, (9, 0)
+                )
+
+                # Event datetime
+                event_dt = current_date.replace(
+                    hour=hour, minute=minute, second=0
+                )
+                dt_str    = event_dt.strftime("%Y%m%dT%H%M%S")
+                dt_end    = (event_dt + timedelta(minutes=15)
+                             ).strftime("%Y%m%dT%H%M%S")
+                dt_created = datetime.now().strftime("%Y%m%dT%H%M%SZ")
+
+                # Event title
+                if is_last_day:
+                    summary = f"💊 LAST DOSE: {form} {name} {dosage}"
+                else:
+                    summary = f"💊 {form} {name} {dosage}"
+
+                # Event description
+                if is_last_day:
+                    description = (
+                        f"LAST DOSE — Do not take further\\n"
+                        f"Medicine: {name}\\n"
+                        f"Dosage: {dosage}\\n"
+                        f"Timing: {timing_label}\\n"
+                        f"{food_note}\\n"
+                        f"Frequency: {freq}\\n"
+                        f"\\nConsult your doctor before stopping or continuing."
+                    )
+                else:
+                    day_num = day_offset + 1
+                    description = (
+                        f"Medicine: {name}\\n"
+                        f"Dosage: {dosage}\\n"
+                        f"Timing: {timing_label}\\n"
+                        f"{food_note}\\n"
+                        f"Frequency: {freq}\\n"
+                        f"Day {day_num} of {num_days}"
+                    )
+
+                # Alarm — notify 5 minutes before
+                uid = str(uuid.uuid4())
+
+                ics_lines += [
+                    "BEGIN:VEVENT",
+                    f"UID:{uid}",
+                    f"DTSTAMP:{dt_created}",
+                    f"DTSTART:{dt_str}",
+                    f"DTEND:{dt_end}",
+                    f"SUMMARY:{summary}",
+                    f"DESCRIPTION:{description}",
+                    "STATUS:CONFIRMED",
+                    "BEGIN:VALARM",
+                    "TRIGGER:-PT5M",
+                    "ACTION:DISPLAY",
+                    f"DESCRIPTION:Time to take {name} {dosage}",
+                    "END:VALARM",
+                    "END:VEVENT",
+                ]
+                total_events += 1
+
+    ics_lines.append("END:VCALENDAR")
+
+    return "\n".join(ics_lines), total_events

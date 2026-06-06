@@ -661,7 +661,109 @@ with tab1:
                     or paste the prescription text directly.
                 </div>
                 """, unsafe_allow_html=True)
-            
+            # ── Calendar Enhancement ──────────────────────────────
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown(
+                "<div class='section-header'>📅 Medicine Reminders</div>",
+                unsafe_allow_html=True
+            )
+
+            # Show calendar button only if medicines found
+            if report.get('medicines'):
+                show_calendar = st.checkbox(
+                    "Add medicine schedule to my calendar",
+                    key="show_calendar_option"
+                )
+
+                if show_calendar:
+                    st.markdown("""
+                    <div style='background:#1a2744;border:1px solid #2d4a7a;
+                    border-radius:8px;padding:10px 14px;margin-bottom:10px;
+                    color:#93c5fd;font-size:0.85rem;'>
+                        📅 Select the date you want to START taking medicines.
+                        Reminders will be created for each medicine till its end date.
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    from datetime import date
+                    start_date = st.date_input(
+                        "Start date",
+                        value=date.today(),
+                        key="cal_start_date"
+                    )
+
+                    if st.button("📅 Generate Calendar File",
+                                 key="generate_cal"):
+                        from src.report_generator import generate_ics_calendar
+                        import os
+
+                        medicines_for_cal = report.get('medicines', [])
+                        ics_content, total_events = generate_ics_calendar(
+                            medicines_for_cal,
+                            start_date.strftime("%Y-%m-%d")
+                        )
+
+                        # Save to outputs
+                        os.makedirs("outputs", exist_ok=True)
+                        ics_path = "outputs/medicine_reminders.ics"
+                        with open(ics_path, "w", encoding="utf-8") as f:
+                            f.write(ics_content)
+
+                        st.success(
+                            f"✅ Calendar file created with "
+                            f"{total_events} reminders!"
+                        )
+
+                        # Download button
+                        with open(ics_path, "rb") as f:
+                            st.download_button(
+                                label="⬇️ Download Medicine Reminders",
+                                data=f,
+                                file_name="MedScript_Medicine_Reminders.ics",
+                                mime="text/calendar",
+                                key="download_cal"
+                            )
+
+                        # Instructions
+                        st.markdown("""
+                        <div style='background:#1e2130;border:1px solid #374151;
+                        border-radius:10px;padding:14px 16px;margin-top:12px;'>
+                            <div style='color:#e2e8f0;font-size:0.9rem;
+                            font-weight:600;margin-bottom:8px;'>
+                                📋 How to add to your calendar:
+                            </div>
+                            <div style='color:#94a3b8;font-size:0.83rem;
+                            line-height:1.9;'>
+                                <b style='color:#a5b4fc'>Google Calendar:</b><br>
+                                1. Download the file above<br>
+                                2. Open Google Calendar on your browser<br>
+                                3. Click ⚙️ Settings → Import & Export → Import<br>
+                                4. Select the downloaded .ics file → Import<br>
+                                5. All reminders added automatically ✅<br><br>
+
+                                <b style='color:#a5b4fc'>iPhone / iPad:</b><br>
+                                1. Download the file on your phone<br>
+                                2. Tap the file → It opens in Calendar automatically<br>
+                                3. Tap "Add All" → Done ✅<br><br>
+
+                                <b style='color:#a5b4fc'>Android:</b><br>
+                                1. Download the file<br>
+                                2. Open Google Calendar app<br>
+                                3. Tap the downloaded file → Import ✅<br><br>
+
+                                <b style='color:#a5b4fc'>Outlook:</b><br>
+                                1. Download the file<br>
+                                2. Double-click it → Outlook opens automatically<br>
+                                3. Click "Import" → Done ✅
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+            else:
+                st.markdown("""
+                <div style='color:rgba(255,255,255,0.4);font-size:0.85rem;'>
+                    No medicines detected — calendar reminders not available.
+                </div>
+                """, unsafe_allow_html=True)
             # ── Disclaimer ────────────────────────────────────────
             st.markdown("""
             <div class='disclaimer'>
