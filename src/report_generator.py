@@ -1,9 +1,9 @@
 # report_generator.py
 # Combines OCR + NER + API data into structured patient report
 
+import re
 import json
 import os
-import re
 import time
 import requests
 from datetime import datetime
@@ -33,9 +33,7 @@ def analyze_report_values(report_text):
     """
     Parses lab reports where each test is on one line:
     Test Name  value  unit  min - max
-    or
-    Test Name  value  unit  <max
-    or (sometimes unit is missing or order varies)
+    Handles edge cases like inverted value/name lines (Dr Lal PathLabs format)
     """
     abnormal = []
     normal   = []
@@ -48,7 +46,7 @@ def analyze_report_values(report_text):
         "reported", "green park", "delhi", "lpl-vasant", "nelson",
         "l.s.c", "new delhi", "page ", "collected at", "processed at",
         "differential leucocyte", "absolute leucocyte",
-        "liver & kidney", "immunoglobulin", "tsh (thyroid",
+        "liver & kidney", "tsh (thyroid",
         "interpretation", "reference group", "non diabetic",
         "factors that", "hemoglobin variant", "any condition",
         "normal levels", "no close correlation", "tsh levels",
@@ -66,27 +64,61 @@ def analyze_report_values(report_text):
         "report delivery", "certain tests", "test results may",
         "courts/forum", "medico legal", "computer generated",
         "the report does", "sample drawn", "if test results",
-        "---", "***", "|||", "aheeeh", "bnfffn", "fnchfd",
-        "| ", "|-", "hba1c in %", "*495105872*",
+        "---", "***", "aheeeh", "bnfffn", "fnchfd",
+        "hba1c in %", "*495105872*",
         "dr rajni", "dr divya", "dr gaurav", "dr rachna",
         "consultant", "pathologist", "biochemist",
-        "dmc no", "dmc/r"
+        "dmc no", "dmc/r", "lalpathlabs",
+        "e-mail:", "result rechecked"
     ]
 
-    lines = report_text.split("\n")
+    unit_keywords = [
+        "mill/mm3", "thou/mm3", "thou/ul", "ml/min/1.73m2",
+        "ml/min", "mm/hr", "meq/l", "iu/ml", "µiu/ml", "uiu/ml",
+        "ng/ml", "pg/ml", "mg/dl", "gm/dl", "g/dl", "umol/l",
+        "mmol/l", "fl", "pg", "u/l", "%"
+    ]
 
     # Patterns
     range_pat  = re.compile(r"([\d]+\.?\d*)\s*[-–]\s*([\d]+\.?\d*)")
     lt_gt_pat  = re.compile(r"([<>])\s*([\d]+\.?\d*)")
     number_pat = re.compile(r"\b([\d]+\.?\d*)\b")
 
-    unit_keywords = [
-        "mill/mm3", "thou/mm3", "thou/ul", "ml/min/1.73m2",
-        "ml/min", "mm/hr", "meq/l", "iu/ml", "µiu/ml", "uiu/ml",
-        "ng/ml", "pg/ml", "mg/dl", "gm/dl", "g/dl", "umol/l",
-        "mmol/l", "thou/mm3", "fl", "pg", "u/l", "%"
-    ]
+    # ── Pre-process: fix inverted lines ──────────────────────────
+    # Dr Lal PathLabs sometimes puts value on line ABOVE test name
+    # e.g:
+    #   14.60  %
+    #   Red Cell Distribution Width (RDW)  11.60 - 14.00
+    raw_lines   = report_text.split("\n")
+    fixed_lines = []
+    i = 0
+    while i < len(raw_lines):
+        curr      = raw_lines[i].strip()
+        next_line = raw_lines[i+1].strip() if i+1 < len(raw_lines) else ""
 
+        # Check if current line is just a value+unit
+        val_only = re.match(
+            r"^([\d]+\.?\d*)\s*"
+            r"(%|g/dL|mg/dL|fL|pg|U/L|thou/mm3|IU/mL|mEq/L|mill/mm3|mm/hr)?\s*$",
+            curr, re.IGNORECASE
+        )
+        # And next line has a test name + range
+        has_range_next = re.search(
+            r"[\d]+\.?\d*\s*[-–]\s*[\d]+\.?\d*", next_line
+        )
+
+        if val_only and has_range_next and next_line:
+            # Merge value into next line
+            fixed_lines.append(next_line + "  " + curr)
+            i += 2
+            continue
+
+        fixed_lines.append(curr)
+        i += 1
+
+    lines = fixed_lines
+
+    # ── Parse each line ───────────────────────────────────────────
     for line in lines:
         line = line.strip()
         if not line or len(line) < 5:
@@ -94,19 +126,24 @@ def analyze_report_values(report_text):
 
         line_lower = line.lower()
 
+        # Skip contact/phone lines
+        if re.search(r"tel[:\s]|fax[:\s]|@|lalpathlabs|e-mail",
+                     line_lower):
+            continue
+
         # Skip junk lines
         if any(kw in line_lower for kw in skip_keywords):
             continue
 
-        # Skip lines starting with digits (dates, page numbers)
+        # Skip lines starting with dates
         if re.match(r"^\d{1,2}/\d{1,2}/\d{4}", line):
             continue
 
-        # Skip lines with no numbers at all — can't be a test result
+        # Skip lines with no numbers
         if not number_pat.search(line):
             continue
 
-        # Must have a reference range to be valid
+        # Must have a reference range to be a valid test result
         range_match = range_pat.search(line)
         lt_gt_match = lt_gt_pat.search(line)
 
@@ -126,14 +163,12 @@ def analyze_report_values(report_text):
             lt_gt_op  = lt_gt_match.group(1)
             lt_gt_val = float(lt_gt_match.group(2))
 
-        # Extract test name — everything before the first number
+        # Extract test name — text before first number
         first_num = number_pat.search(line)
         if not first_num:
             continue
 
         test_name = line[:first_num.start()].strip()
-
-        # Clean test name
         test_name = re.sub(r"\s+", " ", test_name).strip()
         test_name = re.sub(r"[:\*]+", "", test_name).strip()
 
@@ -145,37 +180,33 @@ def analyze_report_values(report_text):
                 or test_name.startswith("(")
                 or test_name.startswith("<")
                 or test_name.startswith(">")
-                or test_name.startswith("|")):
+                or test_name.startswith("|")
+                or re.search(r"tel[:\s]|fax|@", test_name.lower())):
             continue
 
-        # Extract patient value — the number that is NOT part of range
-        # Remove the range from line to find value
+        # Extract patient value
+        # Remove range from line to isolate value
         line_without_range = line
-
         if range_match:
-            # Remove the range portion
-            line_without_range = line[:range_match.start()] + \
-                                 line[range_match.end():]
+            line_without_range = (line[:range_match.start()]
+                                  + line[range_match.end():])
         elif lt_gt_match:
-            line_without_range = line[:lt_gt_match.start()] + \
-                                 line[lt_gt_match.end():]
+            line_without_range = (line[:lt_gt_match.start()]
+                                  + line[lt_gt_match.end():])
 
-        # Also remove the test name
+        # Remove test name and units
         line_without_range = line_without_range.replace(test_name, "")
-
-        # Remove unit keywords
         for uk in unit_keywords:
             line_without_range = re.sub(
-                re.escape(uk), "", line_without_range, flags=re.IGNORECASE
+                re.escape(uk), "", line_without_range,
+                flags=re.IGNORECASE
             )
 
-        # Find remaining numbers — the patient value
+        # Remaining numbers = patient value
         remaining_nums = number_pat.findall(line_without_range)
-
         if not remaining_nums:
             continue
 
-        # Take the first remaining number as patient value
         try:
             value = float(remaining_nums[0])
         except ValueError:
@@ -184,7 +215,7 @@ def analyze_report_values(report_text):
         # Extract unit
         unit = ""
         for uk in unit_keywords:
-            if uk in line_lower:
+            if re.search(re.escape(uk), line_lower):
                 unit = uk
                 break
 
