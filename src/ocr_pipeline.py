@@ -11,28 +11,65 @@ from PIL import Image
 # ── Extract text from PDF ─────────────────────────────────────────
 def extract_from_pdf(pdf_path):
     try:
-        import fitz  # PyMuPDF
+        import fitz
+        doc  = fitz.open(pdf_path)
+        text = ""
+
+        for page_num in range(len(doc)):
+            page = doc[page_num]
+
+            # Use dict extraction which preserves column structure better
+            blocks = page.get_text("dict")["blocks"]
+
+            # Collect all text spans with their x,y positions
+            spans = []
+            for block in blocks:
+                if block.get("type") == 0:  # text block
+                    for line in block.get("lines", []):
+                        for span in line.get("spans", []):
+                            spans.append({
+                                "text": span["text"].strip(),
+                                "x":    span["bbox"][0],
+                                "y":    span["bbox"][1],
+                                "x1":   span["bbox"][2]
+                            })
+
+            # Sort by y position (top to bottom), then x (left to right)
+            spans.sort(key=lambda s: (round(s["y"] / 5) * 5, s["x"]))
+
+            # Group spans by approximate y position (same line)
+            line_groups = {}
+            for span in spans:
+                y_key = round(span["y"] / 5) * 5
+                if y_key not in line_groups:
+                    line_groups[y_key] = []
+                line_groups[y_key].append(span)
+
+            # Build text preserving line structure
+            page_text = ""
+            for y_key in sorted(line_groups.keys()):
+                line_spans = sorted(line_groups[y_key], key=lambda s: s["x"])
+                line_text  = "  ".join(
+                    s["text"] for s in line_spans if s["text"]
+                )
+                if line_text.strip():
+                    page_text += line_text + "\n"
+
+            text += page_text
+
+        doc.close()
+
+        if text.strip() and len(text.strip()) > 50:
+            print(f"PDF extracted: {len(text)} characters")
+            return text.strip(), "typed"
+
+        # Fallback to simple extraction
         doc  = fitz.open(pdf_path)
         text = ""
         for page in doc:
             text += page.get_text()
         doc.close()
-
-        if text.strip() and len(text.strip()) > 50:
-            print(f"PDF text extracted: {len(text)} characters")
-            return text.strip(), "typed"
-
-        # No text layer — scanned PDF, convert to image
-        print("Scanned PDF detected — converting to image for OCR")
-        doc       = fitz.open(pdf_path)
-        page      = doc[0]
-        mat       = fitz.Matrix(2.5, 2.5)
-        pix       = page.get_pixmap(matrix=mat)
-        img_path  = pdf_path.replace(".pdf", "_page1.png")
-        pix.save(img_path)
-        doc.close()
-        text, _   = ocr_image(img_path)
-        return text, "handwritten"
+        return text.strip(), "typed"
 
     except ImportError:
         print("PyMuPDF not installed. Run: pip install pymupdf")
@@ -40,7 +77,6 @@ def extract_from_pdf(pdf_path):
     except Exception as e:
         print(f"PDF error: {e}")
         return "", "unknown"
-
 
 # ── Preprocess image for OCR ──────────────────────────────────────
 def preprocess_image(image_path):

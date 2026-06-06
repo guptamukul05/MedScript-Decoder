@@ -31,180 +31,195 @@ NORMAL_RANGES = {
 # ── Dynamic report value analyzer ────────────────────────────────
 def analyze_report_values(report_text):
     """
-    Handles lab reports where value, unit and range are on separate lines.
-    This is the standard PyMuPDF extraction format for columnar PDFs.
+    Parses lab reports where each test is on one line:
+    Test Name  value  unit  min - max
+    or
+    Test Name  value  unit  <max
+    or (sometimes unit is missing or order varies)
     """
     abnormal = []
     normal   = []
-    lines    = [l.strip() for l in report_text.split("\n")]
     seen     = set()
 
     skip_keywords = [
-        "test name", "bio. ref", "reference", "page", "note",
-        "comment", "interpretation", "collected", "processed",
-        "name", "age", "gender", "lab no", "ref by", "reported",
-        "important", "dr lal", "tel", "fax", "email", "www",
-        "factors", "measurement", "end of report", "authenticity",
-        "scan", "qr code", "dr rajni", "dr divya", "dr gaurav",
-        "consultant", "pathologist", "biochemist", "laboratory",
-        "test conducted", "sample", "kindly", "court", "medico",
-        "computer generated", "signature", "report status",
-        "collected at", "processed at", "results", "units",
-        "hemogram", "liver", "kidney", "function test",
-        "differential", "leucocyte", "absolute", "immunoglobulin",
-        "thyroid", "hba1c", "interpretation", "reference group",
-        "non diabetic", "prediabetes", "diagnosing", "therapeutic",
-        "factors that", "measurement", "hbsc", "hbss"
+        "test name", "bio. ref", "results", "units", "hemogram",
+        "test report", "report status", "name", "lab no", "ref by",
+        "collected", "a/c status", "final", "age", "gender",
+        "reported", "green park", "delhi", "lpl-vasant", "nelson",
+        "l.s.c", "new delhi", "page ", "collected at", "processed at",
+        "differential leucocyte", "absolute leucocyte",
+        "liver & kidney", "immunoglobulin", "tsh (thyroid",
+        "interpretation", "reference group", "non diabetic",
+        "factors that", "hemoglobin variant", "any condition",
+        "normal levels", "no close correlation", "tsh levels",
+        "values <0.03", "transient increase", "presence of",
+        "bun-to-creatinine", "egfr category", "estimated gfr",
+        "result rechecked", "please correlate", "the test depends",
+        "affected target", "minimum between", "on the measured",
+        "particularly when", "reported as per", "the bun-to",
+        "azotemia.", "bun/creatinine ratio is about",
+        "anisocytosis", "predominantly", "wbc is", "platelets are",
+        "in anaemic", "trait.", "of beta", "as per the",
+        "leucocyte counts", "note", "comment", "hba1c result",
+        "authenticity", "scan", "important instructions",
+        "test results released", "laboratory investigations",
+        "report delivery", "certain tests", "test results may",
+        "courts/forum", "medico legal", "computer generated",
+        "the report does", "sample drawn", "if test results",
+        "---", "***", "|||", "aheeeh", "bnfffn", "fnchfd",
+        "| ", "|-", "hba1c in %", "*495105872*",
+        "dr rajni", "dr divya", "dr gaurav", "dr rachna",
+        "consultant", "pathologist", "biochemist",
+        "dmc no", "dmc/r"
     ]
 
-    # Units we recognize
-    unit_patterns = re.compile(
-        r"^(g/dL|%|thou/mm3|mill/mm3|fL|pg|mm/hr|mg/dL|U/L|"
-        r"mEq/L|IU/mL|µIU/mL|uIU/mL|ng/mL|pg/mL|umol/L|mmol/L|"
-        r"thou/uL|gm/dL|mL/min.*?)$",
-        re.IGNORECASE
-    )
+    lines = report_text.split("\n")
 
-    # Reference range patterns
-    range_pattern    = re.compile(r"^([\d]+\.?\d*)\s*[-–]\s*([\d]+\.?\d*)$")
-    lt_gt_pattern    = re.compile(r"^([<>])\s*([\d]+\.?\d*)$")
-    range_with_space = re.compile(r"^\s*([\d]+\.?\d*)\s*-\s*([\d]+\.?\d*)\s*$")
+    # Patterns
+    range_pat  = re.compile(r"([\d]+\.?\d*)\s*[-–]\s*([\d]+\.?\d*)")
+    lt_gt_pat  = re.compile(r"([<>])\s*([\d]+\.?\d*)")
+    number_pat = re.compile(r"\b([\d]+\.?\d*)\b")
 
-    # Pure number pattern
-    number_pattern = re.compile(r"^[\d]+\.?\d*$")
+    unit_keywords = [
+        "mill/mm3", "thou/mm3", "thou/ul", "ml/min/1.73m2",
+        "ml/min", "mm/hr", "meq/l", "iu/ml", "µiu/ml", "uiu/ml",
+        "ng/ml", "pg/ml", "mg/dl", "gm/dl", "g/dl", "umol/l",
+        "mmol/l", "thou/mm3", "fl", "pg", "u/l", "%"
+    ]
 
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-
-        if not line or len(line) < 2:
-            i += 1
+    for line in lines:
+        line = line.strip()
+        if not line or len(line) < 5:
             continue
 
         line_lower = line.lower()
+
+        # Skip junk lines
         if any(kw in line_lower for kw in skip_keywords):
-            i += 1
             continue
 
-        # Check if this looks like a test name
-        # Test names are text lines that are not numbers, units or ranges
-        is_number   = number_pattern.match(line)
-        is_unit     = unit_patterns.match(line)
-        is_range    = range_pattern.match(line) or range_with_space.match(line)
-        is_lt_gt    = lt_gt_pattern.match(line)
-        is_in_parens = line.startswith("(") and line.endswith(")")
+        # Skip lines starting with digits (dates, page numbers)
+        if re.match(r"^\d{1,2}/\d{1,2}/\d{4}", line):
+            continue
 
-        if (not is_number and not is_unit and not is_range
-                and not is_lt_gt and not is_in_parens
-                and len(line) > 3
-                and not line[0].isdigit()):
+        # Skip lines with no numbers at all — can't be a test result
+        if not number_pat.search(line):
+            continue
 
-            # This could be a test name — look ahead for value/unit/range
-            test_name = line
+        # Must have a reference range to be valid
+        range_match = range_pat.search(line)
+        lt_gt_match = lt_gt_pat.search(line)
 
-            # Remove method in parentheses from next line
-            j = i + 1
-            if j < len(lines) and lines[j].startswith("("):
-                j += 1  # Skip method description line
+        if not range_match and not lt_gt_match:
+            continue
 
-            # Now look ahead up to 6 lines for value, unit, range
-            value    = None
-            unit     = ""
-            ref_min  = None
-            ref_max  = None
-            ref_str  = None
-            operator = None
+        # Extract reference range
+        ref_min  = None
+        ref_max  = None
+        lt_gt_op = None
+        lt_gt_val= None
 
-            lookahead_lines = lines[j:j+6]
+        if range_match:
+            ref_min = float(range_match.group(1))
+            ref_max = float(range_match.group(2))
+        elif lt_gt_match:
+            lt_gt_op  = lt_gt_match.group(1)
+            lt_gt_val = float(lt_gt_match.group(2))
 
-            for la_line in lookahead_lines:
-                la_line = la_line.strip()
-                if not la_line:
-                    continue
+        # Extract test name — everything before the first number
+        first_num = number_pat.search(line)
+        if not first_num:
+            continue
 
-                # Check for reference range first (e.g. "13.00 - 17.00")
-                r_match = range_pattern.match(la_line) or \
-                          range_with_space.match(la_line)
-                if r_match and ref_min is None:
-                    ref_min = float(r_match.group(1))
-                    ref_max = float(r_match.group(2))
-                    continue
+        test_name = line[:first_num.start()].strip()
 
-                # Check for < or > range (e.g. "<2.00" or ">59")
-                lg_match = lt_gt_pattern.match(la_line)
-                if lg_match and ref_min is None and ref_max is None:
-                    operator = lg_match.group(1)
-                    ref_str  = float(lg_match.group(2))
-                    continue
+        # Clean test name
+        test_name = re.sub(r"\s+", " ", test_name).strip()
+        test_name = re.sub(r"[:\*]+", "", test_name).strip()
 
-                # Check for unit
-                u_match = unit_patterns.match(la_line)
-                if u_match and not unit:
-                    unit = la_line
-                    continue
+        # Skip bad test names
+        if (len(test_name) < 2
+                or test_name in seen
+                or any(kw in test_name.lower() for kw in skip_keywords)
+                or test_name[0].isdigit()
+                or test_name.startswith("(")
+                or test_name.startswith("<")
+                or test_name.startswith(">")
+                or test_name.startswith("|")):
+            continue
 
-                # Check for value (pure number)
-                n_match = number_pattern.match(la_line)
-                if n_match and value is None:
-                    try:
-                        value = float(la_line)
-                    except ValueError:
-                        pass
-                    continue
+        # Extract patient value — the number that is NOT part of range
+        # Remove the range from line to find value
+        line_without_range = line
 
-                # If we hit another test name, stop
-                if (not la_line[0].isdigit()
-                        and not la_line.startswith("(")
-                        and not unit_patterns.match(la_line)
-                        and not range_pattern.match(la_line)
-                        and len(la_line) > 3):
-                    break
+        if range_match:
+            # Remove the range portion
+            line_without_range = line[:range_match.start()] + \
+                                 line[range_match.end():]
+        elif lt_gt_match:
+            line_without_range = line[:lt_gt_match.start()] + \
+                                 line[lt_gt_match.end():]
 
-            # Process if we found a value
-            if value is not None:
-                # Clean test name
-                test_name = re.sub(r"\s+", " ", test_name).strip()
-                test_name = re.sub(r"\*+", "", test_name).strip()
+        # Also remove the test name
+        line_without_range = line_without_range.replace(test_name, "")
 
-                if test_name in seen or len(test_name) < 3:
-                    i += 1
-                    continue
+        # Remove unit keywords
+        for uk in unit_keywords:
+            line_without_range = re.sub(
+                re.escape(uk), "", line_without_range, flags=re.IGNORECASE
+            )
 
-                seen.add(test_name)
+        # Find remaining numbers — the patient value
+        remaining_nums = number_pat.findall(line_without_range)
 
-                entry = {
-                    "parameter": test_name,
-                    "value":     value,
-                    "unit":      unit,
-                    "min":       ref_min,
-                    "max":       ref_max,
-                    "status":    "NORMAL"
-                }
+        if not remaining_nums:
+            continue
 
-                if ref_min is not None and ref_max is not None:
-                    if value < ref_min:
-                        entry["status"] = "LOW"
-                    elif value > ref_max:
-                        entry["status"] = "HIGH"
+        # Take the first remaining number as patient value
+        try:
+            value = float(remaining_nums[0])
+        except ValueError:
+            continue
 
-                elif operator and ref_str is not None:
-                    entry["max"] = ref_str if operator == "<" else None
-                    entry["min"] = ref_str if operator == ">" else None
-                    if operator == "<" and value >= ref_str:
-                        entry["status"] = "HIGH"
-                    elif operator == ">" and value <= ref_str:
-                        entry["status"] = "LOW"
+        # Extract unit
+        unit = ""
+        for uk in unit_keywords:
+            if uk in line_lower:
+                unit = uk
+                break
 
-                if entry["status"] != "NORMAL":
-                    abnormal.append(entry)
-                else:
-                    normal.append(entry)
+        # Determine status
+        status = "NORMAL"
+        if ref_min is not None and ref_max is not None:
+            if value < ref_min:
+                status = "LOW"
+            elif value > ref_max:
+                status = "HIGH"
+        elif lt_gt_op and lt_gt_val is not None:
+            if lt_gt_op == "<" and value >= lt_gt_val:
+                status = "HIGH"
+            elif lt_gt_op == ">" and value <= lt_gt_val:
+                status = "LOW"
 
-        i += 1
+        seen.add(test_name)
+
+        entry = {
+            "parameter": test_name,
+            "value":     value,
+            "unit":      unit,
+            "min":       ref_min if ref_min is not None
+                         else (lt_gt_val if lt_gt_op == ">" else None),
+            "max":       ref_max if ref_max is not None
+                         else (lt_gt_val if lt_gt_op == "<" else None),
+            "status":    status
+        }
+
+        if status != "NORMAL":
+            abnormal.append(entry)
+        else:
+            normal.append(entry)
 
     return abnormal, normal
-
-
 # ── Urgency calculator ────────────────────────────────────────────
 def calculate_urgency(abnormal_values):
     if not abnormal_values:
