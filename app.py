@@ -356,10 +356,11 @@ with col4:
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ── Two dashboard tabs ────────────────────────────────────────────
-tab1, tab2, tab3 = st.tabs([
+tab1, tab2, tab3, tab4 = st.tabs([
     "📋  Prescription Dashboard",
     "🧪  Medical Report Dashboard",
-    "🔄  Combined Analysis"
+    "🔄  Combined Analysis",
+    "📈  Report Trends"
 ])
 
 # ════════════════════════════════════════════════════════════════
@@ -1308,3 +1309,422 @@ with tab3:
             only. Always consult a qualified doctor for proper medical advice.
         </div>
         """, unsafe_allow_html=True)
+# ════════════════════════════════════════════════════════════════
+# DASHBOARD 4 — REPORT TRENDS
+# ════════════════════════════════════════════════════════════════
+with tab4:
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    st.markdown("""
+    <div class='dashboard-card'>
+        <div class='section-header'>📈 Report Trend Tracker</div>
+        <div style='color:rgba(255,255,255,0.5);font-size:0.85rem;'>
+            Upload multiple reports over time to track how your
+            health values change. The system remembers your history.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    from src.trend_tracker import (
+        save_report, get_all_patients, get_patient_reports,
+        build_trend_data, delete_patient_data, init_db
+    )
+    import plotly.graph_objects as go
+    import plotly.express as px
+    import pandas as pd
+    from datetime import datetime
+
+    init_db()
+
+    # ── Two columns layout ────────────────────────────────────────
+    t4_left, t4_right = st.columns([1, 1.5], gap="large")
+
+    with t4_left:
+        st.markdown(
+            "<div class='section-header'>💾 Save New Report</div>",
+            unsafe_allow_html=True
+        )
+
+        # Patient name input
+        patient_name_input = st.text_input(
+            "Your name (used to identify your records)",
+            placeholder="e.g. Vishal Gupta",
+            key="trend_patient_name"
+        )
+
+        # Report date
+        report_date_input = st.date_input(
+            "Report date",
+            value=datetime.today(),
+            key="trend_report_date"
+        )
+
+        # Lab name
+        lab_name_input = st.text_input(
+            "Lab name (optional)",
+            placeholder="e.g. Dr Lal PathLabs",
+            key="trend_lab_name"
+        )
+
+        # Check if report analysis is available
+        has_report = (
+            st.session_state.get('report_abnormal') is not None
+            and (
+                len(st.session_state.get('report_abnormal', [])) > 0
+                or len(st.session_state.get('report_normal', [])) > 0
+            )
+        )
+
+        if has_report:
+            st.markdown("""
+            <div style='background:#14291e;border:1px solid #14532d;
+            border-radius:8px;padding:8px 12px;margin:8px 0;
+            color:#86efac;font-size:0.82rem;'>
+                ✅ Report from Dashboard 2 is ready to save
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div style='background:#2d2500;border:1px solid #92400e;
+            border-radius:8px;padding:8px 12px;margin:8px 0;
+            color:#fde68a;font-size:0.82rem;'>
+                ⚠️ Go to Dashboard 2 first, upload and analyze a
+                report, then come back here to save it.
+            </div>
+            """, unsafe_allow_html=True)
+
+        save_btn = st.button(
+            "💾 Save Report to History",
+            key="save_trend_report",
+            disabled=not (has_report and patient_name_input.strip())
+        )
+
+        if save_btn and has_report and patient_name_input.strip():
+            abnormal = st.session_state.get('report_abnormal', [])
+            normal   = st.session_state.get('report_normal', [])
+
+            report_id = save_report(
+                patient_name  = patient_name_input.strip(),
+                report_date   = report_date_input.strftime("%Y-%m-%d"),
+                abnormal      = abnormal,
+                normal        = normal,
+                lab_name      = lab_name_input.strip()
+            )
+
+            st.success(
+                f"✅ Report saved for {patient_name_input.strip()} "
+                f"on {report_date_input.strftime('%d %b %Y')}!"
+            )
+            st.session_state['trend_saved_name'] = \
+                patient_name_input.strip()
+
+        # ── Existing patients ─────────────────────────────────────
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown(
+            "<div class='section-header'>👥 Saved Patients</div>",
+            unsafe_allow_html=True
+        )
+        patients = get_all_patients()
+        if patients:
+            for p in patients:
+                reps = get_patient_reports(p['name'])
+                col_a, col_b = st.columns([3, 1])
+                with col_a:
+                    st.markdown(f"""
+                    <div style='color:#e2e8f0;font-size:0.88rem;
+                    padding:4px 0;'>
+                        👤 <b>{p['name']}</b>
+                        <span style='color:#64748b;font-size:0.8rem;'>
+                        — {len(reps)} report{'s' if len(reps)!=1 else ''}
+                        </span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                with col_b:
+                    if st.button("🗑️", key=f"del_{p['id']}",
+                                 help=f"Delete {p['name']}"):
+                        delete_patient_data(p['name'])
+                        st.rerun()
+        else:
+            st.markdown("""
+            <div style='color:rgba(255,255,255,0.3);font-size:0.85rem;'>
+                No saved patients yet.
+            </div>
+            """, unsafe_allow_html=True)
+
+    with t4_right:
+        st.markdown(
+            "<div class='section-header'>📊 View Trends</div>",
+            unsafe_allow_html=True
+        )
+
+        # Patient selector
+        all_patients = get_all_patients()
+        if not all_patients:
+            st.markdown("""
+            <div style='color:rgba(255,255,255,0.4);font-size:0.9rem;
+            text-align:center;padding:3rem;'>
+                No reports saved yet.<br>Save a report from the left panel first.
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            patient_names = [p['name'] for p in all_patients]
+
+            # Auto-select if just saved
+            default_idx = 0
+            if st.session_state.get('trend_saved_name') in patient_names:
+                default_idx = patient_names.index(
+                    st.session_state['trend_saved_name']
+                )
+
+            selected_patient = st.selectbox(
+                "Select patient",
+                patient_names,
+                index=default_idx,
+                key="trend_select_patient"
+            )
+
+            dates, rows = build_trend_data(selected_patient)
+
+            if not dates or not rows:
+                st.info("No data found for this patient.")
+            else:
+                reports_list = get_patient_reports(selected_patient)
+
+                # ── Summary metrics ───────────────────────────────
+                total_reports  = len(dates)
+                total_abnormal = sum(
+                    1 for r in rows if r['has_abnormal']
+                )
+                total_params   = len(rows)
+
+                m1, m2, m3 = st.columns(3)
+                with m1:
+                    st.metric("Reports", total_reports)
+                with m2:
+                    st.metric("Parameters Tracked", total_params)
+                with m3:
+                    st.metric("Abnormal Parameters", total_abnormal)
+
+                st.markdown("<br>", unsafe_allow_html=True)
+
+                # ── Trend Table ───────────────────────────────────
+                st.markdown(
+                    "<div class='section-header'>"
+                    "📋 Complete Trend Table</div>",
+                    unsafe_allow_html=True
+                )
+
+                # Build table data
+                table_rows = []
+                for row in rows:
+                    tr = {
+                        "Parameter": f"{row['test_name'].title()} "
+                                     f"({row['unit']})"
+                                     if row['unit']
+                                     else row['test_name'].title()
+                    }
+
+                    prev_val = None
+                    for date in dates:
+                        date_label = datetime.strptime(
+                            date, "%Y-%m-%d"
+                        ).strftime("%d %b %Y")
+
+                        val_data = row['values'].get(date)
+                        if val_data is None:
+                            tr[date_label] = "Not tested"
+                        else:
+                            val    = val_data['value']
+                            status = val_data['status']
+                            indicator = (
+                                "🔴" if status == "HIGH" else
+                                "🟡" if status == "LOW"  else
+                                "🟢"
+                            )
+                            tr[date_label] = f"{indicator} {val}"
+
+                    # Trend column
+                    tr["Trend"] = row['trend']
+
+                    table_rows.append(tr)
+
+                if table_rows:
+                    df_trend = pd.DataFrame(table_rows)
+
+                    # Style the dataframe
+                    st.dataframe(
+                        df_trend,
+                        use_container_width=True,
+                        hide_index=True,
+                        height=min(
+                            50 + len(table_rows) * 35, 500
+                        )
+                    )
+
+                # ── Trend Graphs ──────────────────────────────────
+                if len(dates) >= 2:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.markdown(
+                        "<div class='section-header'>"
+                        "📈 Trend Graphs</div>",
+                        unsafe_allow_html=True
+                    )
+
+                    # Parameter selector
+                    param_options = [
+                        r['test_name'].title() for r in rows
+                        if sum(
+                            1 for d in dates
+                            if r['values'].get(d) is not None
+                        ) >= 2
+                    ]
+
+                    if param_options:
+                        selected_params = st.multiselect(
+                            "Select parameters to plot",
+                            param_options,
+                            default=param_options[:4],
+                            key="trend_params"
+                        )
+
+                        if selected_params:
+                            # Create plotly figure
+                            fig = go.Figure()
+
+                            date_labels = [
+                                datetime.strptime(
+                                    d, "%Y-%m-%d"
+                                ).strftime("%d %b %Y")
+                                for d in dates
+                            ]
+
+                            colors = [
+                                "#6366f1", "#f59e0b", "#10b981",
+                                "#ef4444", "#8b5cf6", "#06b6d4",
+                                "#f97316", "#84cc16"
+                            ]
+
+                            for idx, param in enumerate(selected_params):
+                                # Find row for this param
+                                row_data = next(
+                                    (r for r in rows
+                                     if r['test_name'].lower() ==
+                                     param.lower()),
+                                    None
+                                )
+                                if not row_data:
+                                    continue
+
+                                y_vals  = []
+                                x_dates = []
+                                for date in dates:
+                                    val_data = row_data['values'].get(date)
+                                    if val_data is not None:
+                                        y_vals.append(val_data['value'])
+                                        x_dates.append(
+                                            datetime.strptime(
+                                                date, "%Y-%m-%d"
+                                            ).strftime("%d %b %Y")
+                                        )
+
+                                if len(y_vals) < 2:
+                                    continue
+
+                                color = colors[idx % len(colors)]
+
+                                fig.add_trace(go.Scatter(
+                                    x=x_dates,
+                                    y=y_vals,
+                                    mode="lines+markers",
+                                    name=param,
+                                    line=dict(
+                                        color=color, width=2.5
+                                    ),
+                                    marker=dict(
+                                        size=8, color=color,
+                                        line=dict(
+                                            color="white", width=1.5
+                                        )
+                                    ),
+                                    hovertemplate=(
+                                        f"<b>{param}</b><br>"
+                                        "Date: %{x}<br>"
+                                        "Value: %{y}<br>"
+                                        "<extra></extra>"
+                                    )
+                                ))
+
+                                # Add normal range band if available
+                                first_val = next(
+                                    (row_data['values'][d]
+                                     for d in dates
+                                     if row_data['values'].get(d)),
+                                    None
+                                )
+                                if (first_val
+                                        and first_val.get('ref_min')
+                                        and first_val.get('ref_max')):
+                                    fig.add_hrect(
+                                        y0=first_val['ref_min'],
+                                        y1=first_val['ref_max'],
+                                        fillcolor=color,
+                                        opacity=0.07,
+                                        line_width=0,
+                                        annotation_text="Normal range",
+                                        annotation_position="top left"
+                                    )
+
+                            fig.update_layout(
+                                paper_bgcolor="rgba(0,0,0,0)",
+                                plot_bgcolor="rgba(30,33,48,0.8)",
+                                font=dict(
+                                    color="#e2e8f0", size=12
+                                ),
+                                legend=dict(
+                                    bgcolor="rgba(30,33,48,0.9)",
+                                    bordercolor="#374151",
+                                    borderwidth=1
+                                ),
+                                xaxis=dict(
+                                    gridcolor="#374151",
+                                    tickfont=dict(color="#94a3b8")
+                                ),
+                                yaxis=dict(
+                                    gridcolor="#374151",
+                                    tickfont=dict(color="#94a3b8")
+                                ),
+                                hovermode="x unified",
+                                height=420,
+                                margin=dict(
+                                    l=40, r=40, t=30, b=40
+                                )
+                            )
+
+                            st.plotly_chart(
+                                fig,
+                                use_container_width=True
+                            )
+
+                    else:
+                        st.info(
+                            "Need at least 2 reports to show trends. "
+                            "Save another report to see graphs."
+                        )
+
+                elif len(dates) == 1:
+                    st.markdown("""
+                    <div style='background:#1a2744;border:1px solid
+                    #2d4a7a;border-radius:8px;padding:10px 14px;
+                    color:#93c5fd;font-size:0.85rem;'>
+                        📊 Save at least 2 reports to see trend graphs.
+                        Upload and save another report after some time.
+                    </div>
+                    """, unsafe_allow_html=True)
+
+    # ── Disclaimer ────────────────────────────────────────────────
+    st.markdown("""
+    <div class='disclaimer'>
+        ⚠️ Trend data is stored locally on this device only.
+        Always consult your doctor to interpret trends in your reports.
+    </div>
+    """, unsafe_allow_html=True)
