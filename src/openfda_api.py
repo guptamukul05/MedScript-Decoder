@@ -592,6 +592,136 @@ def get_fallback_info(drug_name):
     info["source"]    = "Indian Medicine Database"
     return info
 
+def check_drug_interactions(drug_list):
+    """
+    Checks interactions between all medicine combinations.
+    Uses OpenFDA + RxNorm + Groq AI for analysis.
+    Returns only combinations that have potential interactions.
+    """
+    if len(drug_list) < 2:
+        return []
+
+    from itertools import combinations
+    from groq import Groq
+    from dotenv import load_dotenv
+    load_dotenv()
+
+    api_key = os.getenv("GROQ_API_KEY", "")
+
+    # Build all pairs
+    pairs = list(combinations(drug_list, 2))
+
+    if not pairs:
+        return []
+
+    # Build prompt for Groq to check all pairs at once
+    pairs_text = "\n".join([
+        f"{i+1}. {p[0].title()} + {p[1].title()}"
+        for i, p in enumerate(pairs)
+    ])
+
+    prompt = f"""Check drug interactions for these medicine combinations:
+
+{pairs_text}
+
+For each combination:
+- If there is a KNOWN clinically significant interaction: describe it briefly
+- If there is NO significant interaction: say "No significant interaction"
+
+Rules:
+- Be medically accurate and concise
+- Only mention interactions that are well-documented
+- Do not guess or hallucinate interactions
+- For Indian brand names, consider their generic equivalents
+- Keep each response to 1-2 lines maximum
+- Format your response EXACTLY like this for each pair:
+
+1. [Medicine A] + [Medicine B]: [interaction description or "No significant interaction"]
+2. [Medicine A] + [Medicine B]: [interaction description or "No significant interaction"]
+
+Only list pairs that have significant interactions at the end as a summary."""
+
+    try:
+        if api_key:
+            client   = Groq(api_key=api_key)
+            response = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {
+                        "role":    "system",
+                        "content": "You are a clinical pharmacist. "
+                                   "You provide accurate, concise drug "
+                                   "interaction information. You never "
+                                   "fabricate interactions."
+                    },
+                    {
+                        "role":    "user",
+                        "content": prompt
+                    }
+                ],
+                max_tokens=800,
+                temperature=0.1  # Low temperature for factual accuracy
+            )
+            raw = response.choices[0].message.content.strip()
+
+            # Parse the response
+            interactions = []
+            lines        = raw.split("\n")
+
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+
+                # Match numbered lines like "1. DrugA + DrugB: description"
+                match = re.match(
+                    r"^\d+\.\s*(.+?)\s*\+\s*(.+?):\s*(.+)$",
+                    line
+                )
+                if match:
+                    drug_a = match.group(1).strip()
+                    drug_b = match.group(2).strip()
+                    desc   = match.group(3).strip()
+
+                    # Only include if there IS an interaction
+                    if "no significant interaction" not in desc.lower() \
+                            and "no known interaction" not in desc.lower() \
+                            and len(desc) > 5:
+
+                        # Determine severity
+                        desc_lower = desc.lower()
+                        if any(w in desc_lower for w in [
+                            "serious", "severe", "avoid", "contraindicated",
+                            "dangerous", "fatal", "life-threatening"
+                        ]):
+                            severity = "serious"
+                            icon     = "🔴"
+                        elif any(w in desc_lower for w in [
+                            "monitor", "caution", "may", "can",
+                            "possible", "potential", "risk"
+                        ]):
+                            severity = "moderate"
+                            icon     = "🟡"
+                        else:
+                            severity = "mild"
+                            icon     = "🟠"
+
+                        interactions.append({
+                            "drug_a":   drug_a,
+                            "drug_b":   drug_b,
+                            "desc":     desc,
+                            "severity": severity,
+                            "icon":     icon
+                        })
+
+            return interactions
+
+        else:
+            return []
+
+    except Exception as e:
+        print(f"Interaction check error: {e}")
+        return []
 
 # ── Test ──────────────────────────────────────────────────────────
 if __name__ == "__main__":

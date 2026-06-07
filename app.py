@@ -662,6 +662,225 @@ with tab1:
                     or paste the prescription text directly.
                 </div>
                 """, unsafe_allow_html=True)
+            
+            # ── Medicine Interaction Checker ──────────────────────
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown(
+                "<div class='section-header'>"
+                "💊 Medicine Interaction Checker</div>",
+                unsafe_allow_html=True
+            )
+
+            # Ask if user has regular medicines
+            has_regular = st.radio(
+                "Do you take any other regular medicines "
+                "(apart from this prescription)?",
+                ["No", "Yes"],
+                horizontal=True,
+                key="has_regular_meds"
+            )
+
+            if has_regular == "Yes":
+                st.markdown("""
+                <div style='background:#1a2744;border:1px solid #2d4a7a;
+                border-radius:8px;padding:8px 12px;margin:8px 0;
+                color:#93c5fd;font-size:0.82rem;'>
+                    💡 Enter your regular medicines one per line.
+                    We will check them against your prescription medicines.
+                </div>
+                """, unsafe_allow_html=True)
+
+                regular_meds_input = st.text_area(
+                    "Your regular medicines",
+                    placeholder="Example:\nMetformin 500mg\nAmlodipine 5mg\nThyronorm 50mcg",
+                    height=120,
+                    key="regular_meds_input"
+                )
+
+                check_btn = st.button(
+                    "🔍 Check Interactions",
+                    key="check_interactions_btn"
+                )
+
+                if check_btn and regular_meds_input.strip():
+                    # Parse regular medicines
+                    regular_list = [
+                        re.sub(r"\d+.*$", "", line.strip()).strip()
+                        for line in regular_meds_input.strip().split("\n")
+                        if line.strip()
+                    ]
+
+                    # Get prescription medicines
+                    pres_meds = [
+                        m['name'] for m in report.get('medicines', [])
+                    ]
+
+                    # Combine all medicines
+                    all_meds = pres_meds + regular_list
+                    all_meds = [m for m in all_meds if m]
+
+                    if len(all_meds) < 2:
+                        st.warning(
+                            "Need at least 2 medicines to check interactions."
+                        )
+                    else:
+                        with st.spinner(
+                            "Checking interactions with AI..."
+                        ):
+                            from src.openfda_api import \
+                                check_drug_interactions
+                            interactions = check_drug_interactions(
+                                all_meds
+                            )
+                            st.session_state['interactions'] = \
+                                interactions
+                            st.session_state['all_meds_checked'] = \
+                                all_meds
+
+            # Display interaction results
+            if st.session_state.get('interactions') is not None:
+                interactions = st.session_state['interactions']
+                all_meds_checked = st.session_state.get(
+                    'all_meds_checked', []
+                )
+
+                st.markdown("<br>", unsafe_allow_html=True)
+
+                # Show medicines being checked
+                meds_tags = " ".join([
+                    f"<span class='info-tag'>{m.title()}</span>"
+                    for m in all_meds_checked
+                ])
+                st.markdown(
+                    f"<div style='margin-bottom:10px;'>"
+                    f"Checking: {meds_tags}</div>",
+                    unsafe_allow_html=True
+                )
+
+                if not interactions:
+                    # All clear
+                    st.markdown("""
+                    <div style='background:#14291e;border:1px solid
+                    #14532d;border-left:4px solid #22c55e;
+                    border-radius:10px;padding:14px 16px;'>
+                        <div style='color:#86efac;font-size:0.95rem;
+                        font-weight:600;'>
+                            ✅ No significant interactions found
+                        </div>
+                        <div style='color:#94a3b8;font-size:0.83rem;
+                        margin-top:4px;'>
+                            All your medicines appear safe to take
+                            together. Continue as prescribed by
+                            your doctor.
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                else:
+                    # Show interactions
+                    serious  = [i for i in interactions
+                                if i['severity'] == 'serious']
+                    moderate = [i for i in interactions
+                                if i['severity'] == 'moderate']
+                    mild     = [i for i in interactions
+                                if i['severity'] == 'mild']
+
+                    # Serious first
+                    if serious:
+                        st.markdown("""
+                        <div style='color:#fca5a5;font-size:0.85rem;
+                        font-weight:600;margin-bottom:6px;'>
+                            🔴 Serious Interactions — Consult Doctor
+                        </div>
+                        """, unsafe_allow_html=True)
+                        for item in serious:
+                            st.markdown(f"""
+                            <div style='background:#2d1515;
+                            border:1px solid #7f1d1d;
+                            border-left:4px solid #ef4444;
+                            border-radius:10px;padding:12px 14px;
+                            margin-bottom:8px;'>
+                                <div style='color:#fca5a5;
+                                font-size:0.9rem;font-weight:600;'>
+                                    🔴 {item['drug_a'].title()}
+                                    + {item['drug_b'].title()}
+                                </div>
+                                <div style='color:#fecaca;
+                                font-size:0.83rem;margin-top:4px;'>
+                                    {item['desc']}
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+
+                    # Moderate
+                    if moderate:
+                        st.markdown("""
+                        <div style='color:#fde68a;font-size:0.85rem;
+                        font-weight:600;margin:8px 0 6px;'>
+                            🟡 Moderate Interactions — Monitor Carefully
+                        </div>
+                        """, unsafe_allow_html=True)
+                        for item in moderate:
+                            st.markdown(f"""
+                            <div style='background:#2d2000;
+                            border:1px solid #92400e;
+                            border-left:4px solid #f59e0b;
+                            border-radius:10px;padding:12px 14px;
+                            margin-bottom:8px;'>
+                                <div style='color:#fde68a;
+                                font-size:0.9rem;font-weight:600;'>
+                                    🟡 {item['drug_a'].title()}
+                                    + {item['drug_b'].title()}
+                                </div>
+                                <div style='color:#fef3c7;
+                                font-size:0.83rem;margin-top:4px;'>
+                                    {item['desc']}
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+
+                    # Mild
+                    if mild:
+                        st.markdown("""
+                        <div style='color:#fed7aa;font-size:0.85rem;
+                        font-weight:600;margin:8px 0 6px;'>
+                            🟠 Minor Interactions — Be Aware
+                        </div>
+                        """, unsafe_allow_html=True)
+                        for item in mild:
+                            st.markdown(f"""
+                            <div style='background:#2d1a00;
+                            border:1px solid #9a3412;
+                            border-left:4px solid #f97316;
+                            border-radius:10px;padding:12px 14px;
+                            margin-bottom:8px;'>
+                                <div style='color:#fed7aa;
+                                font-size:0.9rem;font-weight:600;'>
+                                    🟠 {item['drug_a'].title()}
+                                    + {item['drug_b'].title()}
+                                </div>
+                                <div style='color:#ffedd5;
+                                font-size:0.83rem;margin-top:4px;'>
+                                    {item['desc']}
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+
+                    # Disclaimer
+                    st.markdown("""
+                    <div style='background:rgba(255,255,255,0.03);
+                    border:1px solid #374151;border-radius:8px;
+                    padding:8px 12px;margin-top:8px;
+                    color:#94a3b8;font-size:0.78rem;'>
+                        ⚠️ These interactions are AI-generated based on
+                        known pharmacological data. Always inform your
+                        doctor about ALL medicines you are taking.
+                        Do not stop or change any medicine without
+                        consulting your doctor.
+                    </div>
+                    """, unsafe_allow_html=True)
+
+
             # ── Calendar Enhancement ──────────────────────────────
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown(
