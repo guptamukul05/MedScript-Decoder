@@ -1,11 +1,13 @@
 # openfda_api.py
 # Drug info: OpenFDA API → RxNorm fuzzy → Indian database fallback
 
+import os
 import requests
 import json
 import time
 import re
 import copy
+from dotenv import load_dotenv
 
 BASE_URL = "https://api.fda.gov/drug"
 
