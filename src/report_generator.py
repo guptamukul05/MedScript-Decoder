@@ -686,3 +686,107 @@ def generate_ics_calendar(medicines, start_date_str):
     ics_lines.append("END:VCALENDAR")
 
     return "\n".join(ics_lines), total_events
+def translate_report(report_data, target_language):
+    """
+    Translates patient report to selected language using Groq.
+    Medicine names stay in English, instructions get translated.
+    """
+    from groq import Groq
+    from dotenv import load_dotenv
+    load_dotenv()
+
+    api_key = os.getenv("GROQ_API_KEY", "")
+    if not api_key or target_language == "English":
+        return None
+
+    # Build content to translate
+    content_to_translate = []
+
+    # Medicines
+    for med in report_data.get('medicines', []):
+        content_to_translate.append({
+            'type':    'medicine',
+            'name':    med['name'],
+            'purpose': med.get('purpose', ''),
+            'timing':  med.get('timing', []),
+            'warnings':med.get('warnings', ''),
+            'duration':med.get('duration', ''),
+            'frequency': med.get('frequency', '')
+        })
+
+    # Symptoms
+    symptoms = report_data.get('symptoms', [])
+    tests    = report_data.get('tests_ordered', [])
+
+    prompt = f"""Translate the following medical information to {target_language}.
+
+IMPORTANT RULES:
+- Keep ALL medicine names in English (do not translate drug names)
+- Keep dosages in English (500mg, 200mg etc.)
+- Keep medical test names in English (CBC, MRI etc.)
+- Translate ONLY the instructions, purpose, warnings, timing labels
+- Keep translations simple and easy to understand for a common person
+- Do not add any extra information
+
+Translate these items to {target_language}:
+
+MEDICINE DETAILS:
+{json.dumps(content_to_translate, indent=2)}
+
+SYMPTOMS: {', '.join(symptoms) if symptoms else 'None'}
+
+TESTS ORDERED: {', '.join(tests) if tests else 'None'}
+
+Respond ONLY with a valid JSON object in this exact format:
+{{
+    "medicines": [
+        {{
+            "name": "keep original English name",
+            "purpose_translated": "translated purpose",
+            "timing_translated": ["translated timing 1", "translated timing 2"],
+            "warnings_translated": "translated warning",
+            "duration_translated": "translated duration",
+            "frequency_translated": "translated frequency"
+        }}
+    ],
+    "symptoms_translated": ["translated symptom 1", "translated symptom 2"],
+    "tests_translated": ["translated test 1"],
+    "take_with_food": "translated take with food instruction",
+    "consult_doctor": "translated consult doctor message",
+    "last_dose_msg": "translated last dose message"
+}}"""
+
+    try:
+        client   = Groq(api_key=api_key)
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {
+                    "role":    "system",
+                    "content": f"You are a medical translator. "
+                               f"Translate medical instructions to "
+                               f"{target_language} accurately and simply. "
+                               f"Always respond with valid JSON only."
+                },
+                {
+                    "role":    "user",
+                    "content": prompt
+                }
+            ],
+            max_tokens=1500,
+            temperature=0.1
+        )
+
+        raw = response.choices[0].message.content.strip()
+
+        # Clean JSON
+        raw = re.sub(r"```json\s*", "", raw)
+        raw = re.sub(r"```\s*", "", raw)
+        raw = raw.strip()
+
+        translated = json.loads(raw)
+        return translated
+
+    except Exception as e:
+        print(f"Translation error: {e}")
+        return None

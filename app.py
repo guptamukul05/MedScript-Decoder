@@ -325,6 +325,43 @@ with st.sidebar:
         Upload both for complete analysis
     </div>
     """, unsafe_allow_html=True)
+
+
+    st.markdown("---")
+    st.markdown("""
+    <div style='color:rgba(255,255,255,0.7);font-size:0.85rem;
+    font-weight:600;margin-bottom:8px;'>
+        🌐 Output Language
+    </div>
+    """, unsafe_allow_html=True)
+
+    language_options = [
+        "English", "Hindi", "Bengali", "Tamil",
+        "Telugu", "Marathi", "Gujarati", "Kannada",
+        "Malayalam", "Punjabi"
+    ]
+
+    selected_language = st.selectbox(
+        "Select language",
+        language_options,
+        index=0,
+        key="output_language",
+        label_visibility="collapsed"
+    )
+
+    if selected_language != "English":
+        st.markdown(f"""
+        <div style='background:#1a2744;border:1px solid #2d4a7a;
+        border-radius:6px;padding:6px 10px;
+        color:#93c5fd;font-size:0.78rem;'>
+            🌐 Output will be shown in {selected_language}
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Store in session state for access across dashboards
+    st.session_state['selected_language'] = selected_language
+
+    st.markdown("---")
     
     st.markdown("---")
     st.markdown("""
@@ -333,6 +370,8 @@ with st.sidebar:
         Always consult a qualified doctor.
     </div>
     """, unsafe_allow_html=True)
+
+
 
 # ── Main header ───────────────────────────────────────────────────
 st.markdown("""
@@ -526,7 +565,11 @@ with tab1:
                 st.session_state['pres_report']   = report
                 st.session_state['pres_entities'] = entities
                 st.session_state['pres_ocr_text'] = ocr_text
-                                    
+                # Clear translation cache for new prescription
+                for key in ['translated_report', 'translation_lang']:
+                    if key in st.session_state:
+                        del st.session_state[key]
+                                            
 
                 # ── Patient and Doctor Info Card ─────────────────────────────────
                 patient = entities.get('patient_info', {})
@@ -612,49 +655,133 @@ with tab1:
             # ── Medicine cards ────────────────────────────────────
             st.markdown("<div class='section-header'>💊 Medicines Prescribed</div>",
                         unsafe_allow_html=True)
-            
             if report.get('medicines'):
-                for med in report['medicines']:
+
+                # Check if translation needed
+                selected_lang = st.session_state.get(
+                    'selected_language', 'English'
+                )
+                translated = None
+
+                if selected_lang != "English":
+                    if st.session_state.get('translated_report') and \
+                       st.session_state.get('translation_lang') == selected_lang:
+                        translated = st.session_state['translated_report']
+                    else:
+                        with st.spinner(
+                            f"Translating to {selected_lang}..."
+                        ):
+                            from src.report_generator import translate_report
+                            translated = translate_report(
+                                report, selected_lang
+                            )
+                            if translated:
+                                st.session_state['translated_report'] = translated
+                                st.session_state['translation_lang'] = selected_lang
+
+                # Display medicine cards
+                for idx, med in enumerate(report['medicines']):
+                    # Get translated content if available
+                    t_med = None
+                    if translated and idx < len(
+                        translated.get('medicines', [])
+                    ):
+                        t_med = translated['medicines'][idx]
+
                     timing_badges = " ".join([
-                        f"<span class='timing-badge'>{t}</span>"
-                        for t in med.get('timing', ['As directed'])
+                        f"<span class='timing-badge'>"
+                        f"{t}</span>"
+                        for t in (
+                            t_med.get('timing_translated', med.get('timing', []))
+                            if t_med else med.get('timing', [])
+                        )
                     ])
-                    brand_names = ", ".join(med.get('brand_names', [])[:3]) or "N/A"
-                    
+                    brand_names = ", ".join(
+                        med.get('brand_names', [])[:3]
+                    ) or "N/A"
+
+                    purpose = (
+                        t_med.get('purpose_translated',
+                                  med.get('purpose', 'N/A'))
+                        if t_med else med.get('purpose', 'N/A')
+                    )
+                    warnings = (
+                        t_med.get('warnings_translated',
+                                  med.get('warnings', 'N/A'))
+                        if t_med else med.get('warnings', 'N/A')
+                    )
+                    frequency = (
+                        t_med.get('frequency_translated',
+                                  med.get('frequency', 'N/A'))
+                        if t_med else med.get('frequency', 'N/A')
+                    )
+                    duration = (
+                        t_med.get('duration_translated',
+                                  med.get('duration', 'N/A'))
+                        if t_med else med.get('duration', 'N/A')
+                    )
+                    food_text = (
+                        translated.get('take_with_food', 'Take with food')
+                        if translated else 'Take with food'
+                    )
+
                     st.markdown(f"""
                     <div class='medicine-card'>
                         <div class='medicine-name'>
                             💊 {med['name'].title()}
+                            <span style='font-size:0.75rem;
+                            color:#64748b;font-weight:400;'>
+                            ({med.get('form','Tab')})</span>
                         </div>
                         <div class='medicine-detail'>
-                            <strong>Purpose:</strong> {med.get('purpose','N/A')[:120]}
+                            <strong>Purpose:</strong> {purpose[:150]}
                         </div>
                         <div class='medicine-detail'>
-                            <strong>Dosage:</strong> {med.get('dosage','N/A')} &nbsp;|&nbsp;
-                            <strong>Frequency:</strong> {med.get('frequency','N/A')} &nbsp;|&nbsp;
-                            <strong>Duration:</strong> {med.get('duration','N/A')}
+                            <strong>Dosage:</strong> {med.get('dosage','N/A')}
+                            &nbsp;|&nbsp;
+                            <strong>Frequency:</strong> {frequency}
+                            &nbsp;|&nbsp;
+                            <strong>Duration:</strong> {duration}
                         </div>
                         <div class='medicine-detail' style='margin-top:6px'>
                             <strong>Take at:</strong> {timing_badges}
                         </div>
                         <div class='medicine-detail'>
-                            <strong>With food:</strong> ✅ Yes &nbsp;|&nbsp;
+                            <strong>With food:</strong> ✅ {food_text}
+                            &nbsp;|&nbsp;
                             <strong>Brand names:</strong> {brand_names}
                         </div>
                         <div class='medicine-detail'>
-                            <strong>Drug class:</strong> {med.get('drug_class','N/A')}
+                            <strong>Drug class:</strong>
+                            {med.get('drug_class','N/A')}
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
-                    
-                    # Warnings
-                    if med.get('warnings') and med['warnings'] != 'N/A':
+
+                    if med.get('warnings') and \
+                       med['warnings'] != 'N/A':
                         st.markdown(f"""
                         <div class='warning-box'>
-                            ⚠️ <strong>Warning:</strong> 
-                            {med['warnings'][:150]}
+                            ⚠️ <strong>Warning:</strong>
+                            {warnings[:150]}
                         </div>
                         """, unsafe_allow_html=True)
+
+                # Show translated symptoms if available
+                if translated and \
+                   translated.get('symptoms_translated'):
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.markdown(
+                        "<div class='section-header'>"
+                        f"🤒 Symptoms ({selected_lang})</div>",
+                        unsafe_allow_html=True
+                    )
+                    tags = " ".join([
+                        f"<span class='info-tag'>{s}</span>"
+                        for s in translated['symptoms_translated']
+                    ])
+                    st.markdown(tags, unsafe_allow_html=True)
+
             else:
                 st.markdown("""
                 <div style='color:rgba(255,255,255,0.4); font-size:0.9rem;
