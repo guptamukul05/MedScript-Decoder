@@ -12,72 +12,107 @@ from PIL import Image
 def extract_from_pdf(pdf_path):
     try:
         import fitz
+
         doc  = fitz.open(pdf_path)
         text = ""
+
+        # First try digital text extraction
+        for page in doc:
+            text += page.get_text()
+
+        doc.close()
+
+        # If we got meaningful text — digital PDF
+        if text.strip() and len(text.strip()) > 100:
+            print(f"Digital PDF — extracted {len(text)} characters")
+            # Use span-based extraction for better column handling
+            doc        = fitz.open(pdf_path)
+            final_text = ""
+
+            for page_num in range(len(doc)):
+                page   = doc[page_num]
+                blocks = page.get_text("dict")["blocks"]
+
+                spans = []
+                for block in blocks:
+                    if block.get("type") == 0:
+                        for line in block.get("lines", []):
+                            for span in line.get("spans", []):
+                                spans.append({
+                                    "text": span["text"].strip(),
+                                    "x":    span["bbox"][0],
+                                    "y":    span["bbox"][1],
+                                })
+
+                spans.sort(key=lambda s: (round(s["y"] / 5) * 5, s["x"]))
+
+                line_groups = {}
+                for span in spans:
+                    y_key = round(span["y"] / 5) * 5
+                    if y_key not in line_groups:
+                        line_groups[y_key] = []
+                    line_groups[y_key].append(span)
+
+                page_text = ""
+                for y_key in sorted(line_groups.keys()):
+                    line_spans = sorted(
+                        line_groups[y_key], key=lambda s: s["x"]
+                    )
+                    line_text = "  ".join(
+                        s["text"] for s in line_spans if s["text"]
+                    )
+                    if line_text.strip():
+                        page_text += line_text + "\n"
+
+                final_text += page_text
+
+            doc.close()
+            return final_text.strip(), "typed"
+
+        # No text layer — scanned PDF
+        print("Scanned PDF detected — using OCR on images...")
+        doc        = fitz.open(pdf_path)
+        all_text   = ""
+
+        import easyocr
+        reader = easyocr.Reader(['en'], gpu=False)
 
         for page_num in range(len(doc)):
             page = doc[page_num]
+            # Render page as image at high resolution
+            mat = fitz.Matrix(2.5, 2.5)  # 2.5x zoom for clarity
+            pix = page.get_pixmap(matrix=mat)
 
-            # Use dict extraction which preserves column structure better
-            blocks = page.get_text("dict")["blocks"]
+            # Save temp image
+            temp_img = f"outputs/temp_page_{page_num}.png"
+            os.makedirs("outputs", exist_ok=True)
+            pix.save(temp_img)
 
-            # Collect all text spans with their x,y positions
-            spans = []
-            for block in blocks:
-                if block.get("type") == 0:  # text block
-                    for line in block.get("lines", []):
-                        for span in line.get("spans", []):
-                            spans.append({
-                                "text": span["text"].strip(),
-                                "x":    span["bbox"][0],
-                                "y":    span["bbox"][1],
-                                "x1":   span["bbox"][2]
-                            })
+            # Run EasyOCR on the image
+            results   = reader.readtext(temp_img)
+            page_text = "\n".join([
+                r[1] for r in results if r[2] > 0.3
+            ])
+            all_text += page_text + "\n"
 
-            # Sort by y position (top to bottom), then x (left to right)
-            spans.sort(key=lambda s: (round(s["y"] / 5) * 5, s["x"]))
-
-            # Group spans by approximate y position (same line)
-            line_groups = {}
-            for span in spans:
-                y_key = round(span["y"] / 5) * 5
-                if y_key not in line_groups:
-                    line_groups[y_key] = []
-                line_groups[y_key].append(span)
-
-            # Build text preserving line structure
-            page_text = ""
-            for y_key in sorted(line_groups.keys()):
-                line_spans = sorted(line_groups[y_key], key=lambda s: s["x"])
-                line_text  = "  ".join(
-                    s["text"] for s in line_spans if s["text"]
-                )
-                if line_text.strip():
-                    page_text += line_text + "\n"
-
-            text += page_text
+            # Clean up temp file
+            try:
+                os.remove(temp_img)
+            except Exception:
+                pass
 
         doc.close()
-
-        if text.strip() and len(text.strip()) > 50:
-            print(f"PDF extracted: {len(text)} characters")
-            return text.strip(), "typed"
-
-        # Fallback to simple extraction
-        doc  = fitz.open(pdf_path)
-        text = ""
-        for page in doc:
-            text += page.get_text()
-        doc.close()
-        return text.strip(), "typed"
+        print(f"Scanned PDF OCR — extracted {len(all_text)} characters")
+        return all_text.strip(), "handwritten"
 
     except ImportError:
         print("PyMuPDF not installed. Run: pip install pymupdf")
         return "", "unknown"
     except Exception as e:
         print(f"PDF error: {e}")
+        import traceback
+        traceback.print_exc()
         return "", "unknown"
-
 # ── Preprocess image for OCR ──────────────────────────────────────
 def preprocess_image(image_path):
     img = cv2.imread(image_path)
