@@ -223,3 +223,15 @@ results/models/
 *.safetensors
 *.pt
 *.pth
+
+
+# Temporary outputs
+outputs/*.png
+outputs/*.txt
+
+# Test PDFs
+data/raw/*.pdf
+
+# Python cache
+__pycache__/
+*.pyc

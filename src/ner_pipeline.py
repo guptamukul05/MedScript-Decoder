@@ -157,97 +157,129 @@ def is_timing_line(line):
 def extract_medicine_blocks(text):
     medicines = []
     lines     = text.split("\n")
+    
     # ── Handle table format prescriptions ────────────────────────
-    # Format: "Medicine Name  take  dosage  duration  instructions"
-    # e.g. "Doxy-1 L-Dr Forte  2 caps  twice daily  10 Days  After meals"
-    table_medicines = []
-    in_prescription_table = False
+    table_medicines  = []
+    in_table         = False
 
     for line in lines:
-        line = line.strip()
+        line       = line.strip()
         line_lower = line.lower()
 
-        # Detect table header
-        if "medication" in line_lower and "dosage" in line_lower:
-            in_prescription_table = True
+        # Detect prescription table header
+        if "medication" in line_lower and (
+            "dosage" in line_lower or "duration" in line_lower
+        ):
+            in_table = True
             continue
 
-        # Detect end of table
-        if in_prescription_table and line == "":
+        if not in_table:
             continue
 
-        if in_prescription_table:
-            # Skip date/doctor lines inside table
-            if re.match(r"\d{2}/\d{2}/\d{2}", line):
+        # Skip date/doctor/footer lines
+        if re.match(r"\d{2}/\d{2}/\d{2}", line):
+            continue
+        if any(kw in line_lower for kw in [
+            "electronically", "page", "signed", "ddc",
+            "by dr", "dr.", "investigations", "observations",
+            "notes", "advised", "clinical"
+        ]):
+            continue
+        if not line or len(line) < 3:
+            continue
+
+        # Extract medicine name — first word group before numbers/keywords
+        # Remove everything after first occurrence of digit+unit or keyword
+        name_match = re.match(
+            r"^([A-Za-z][A-Za-z0-9\s\-\(\)\.]+?)"
+            r"(?=\s+\d|\s+(?:stat|twice|once|three|after|before|"
+            r"massage|apply|tab|cap|\d))",
+            line, re.IGNORECASE
+        )
+
+        if not name_match:
+            # Try simpler — just take first column (before double space)
+            parts = re.split(r"\s{2,}", line)
+            if parts and len(parts[0]) > 2:
+                name_match_text = parts[0].strip()
+            else:
                 continue
-            if "by dr" in line_lower or "electronically" in line_lower:
-                continue
-            if "page " in line_lower:
-                in_prescription_table = False
-                continue
+        else:
+            name_match_text = name_match.group(1).strip()
 
-            # Try to extract medicine from table row
-            # Pattern: medicine name followed by dosage info
-            med_match = re.match(
-                r"^(?:Tab|Cap|Syp|Doxy|Tan|[A-Z])[A-Za-z0-9\s\-\(\)]+",
-                line
-            )
-            if med_match and len(line) > 5:
-                # Extract components from the line
-                parts = re.split(r"\s{2,}|\t", line)
-                parts = [p.strip() for p in parts if p.strip()]
+        # Clean name
+        drug_name = name_match_text
+        drug_name = re.sub(
+            r"^\s*(?:tab|cap|syp|inj)\s+",
+            "", drug_name, flags=re.IGNORECASE
+        ).strip()
+        drug_name = re.sub(r"\(\d+\)\s*$", "", drug_name).strip()
+        drug_name = drug_name.strip("*+× .,")
 
-                if not parts:
-                    continue
+        if not drug_name or len(drug_name) < 2:
+            continue
 
-                drug_name = parts[0]
-                # Clean drug name
-                drug_name = re.sub(
-                    r"\s*(tab|cap|syp)\s*", "", drug_name,
-                    flags=re.IGNORECASE
-                ).strip()
-                drug_name = re.sub(r"\(\d+\)", "", drug_name).strip()
-                drug_name = drug_name.strip("*+× ")
+        # Skip junk lines
+        junk_names = [
+            "stat", "after meals", "before meals", "after food",
+            "with food", "gums", "gums_", "day_", "twice daily",
+            "once daily", "three times", "after", "before",
+            "massage", "apply", "take", "dosage", "duration",
+            "instructions", "medication", "tablet", "capsule"
+        ]
+        if drug_name.lower().strip() in junk_names:
+            continue
+        if re.match(r"Dr\.?\s+", drug_name, re.IGNORECASE):
+            continue
+        # Skip if too short or just special characters
+        if len(drug_name) < 3 or not re.search(r"[A-Za-z]{2,}", drug_name):
+            continue
+        # Skip continuation lines that start with lowercase
+        if drug_name[0].islower():
+            continue
 
-                if not drug_name or len(drug_name) < 2:
-                    continue
+        # Extract dosage from line
+        dose_match = re.search(
+            r"\d+\.?\d*\s*(?:mg|ml|mcg|g|caps?|tabs?|puffs?)",
+            line, re.IGNORECASE
+        )
+        dosage = dose_match.group(0) if dose_match else "As prescribed"
 
-                # Extract dosage
-                dosage = ""
-                dose_match = re.search(
-                    r"\d+\.?\d*\s*(?:mg|ml|mcg|g|caps?|tabs?)",
-                    line, re.IGNORECASE
-                )
-                if dose_match:
-                    dosage = dose_match.group(0)
+        # Extract duration
+        dur_match = re.search(
+            r"\d+\s*(?:days?|weeks?|months?)",
+            line, re.IGNORECASE
+        )
+        duration = dur_match.group(0) if dur_match else "As directed"
 
-                # Extract duration
-                dur_match = re.search(
-                    r"\d+\s*(?:days?|weeks?|months?)",
-                    line, re.IGNORECASE
-                )
-                duration = dur_match.group(0) if dur_match else "As directed"
+        # Extract frequency and timing
+        frequency = parse_frequency(line)
+        timing    = parse_timing_natural(line)
 
-                # Extract frequency and timing
-                freq_text = " ".join(parts[1:]) if len(parts) > 1 else ""
-                frequency = parse_frequency(freq_text + " " + line)
-                timing    = parse_timing_natural(freq_text + " " + line)
+        # Determine form
+        form = "Tab"
+        if re.match(r"^cap\s+", line, re.IGNORECASE):
+            form = "Cap"
+        elif "massage" in line_lower or "gum" in line_lower \
+                or "paint" in line_lower or "gel" in line_lower:
+            form = "Topical"
+        elif re.match(r"^syp\s+", line, re.IGNORECASE):
+            form = "Syp"
 
-                table_medicines.append({
-                    "form":      "Tab",
-                    "name":      drug_name,
-                    "dosage":    dosage or "As prescribed",
-                    "frequency": frequency,
-                    "duration":  duration,
-                    "timing":    timing,
-                    "raw":       line
-                })
+        table_medicines.append({
+            "form":      form,
+            "name":      drug_name,
+            "dosage":    dosage,
+            "frequency": frequency,
+            "duration":  duration,
+            "timing":    timing,
+            "raw":       line
+        })
 
-    # If table medicines found, use them
     if table_medicines:
         return table_medicines
     
-    i         = 0
+    i = 0
 
     while i < len(lines):
         line = lines[i].strip()

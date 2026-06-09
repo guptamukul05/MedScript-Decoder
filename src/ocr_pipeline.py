@@ -71,40 +71,63 @@ def extract_from_pdf(pdf_path):
 
         # No text layer — scanned PDF
         print("Scanned PDF detected — using OCR on images...")
-        doc        = fitz.open(pdf_path)
-        all_text   = ""
+        doc    = fitz.open(pdf_path)
+        all_text = ""
 
         import easyocr
         reader = easyocr.Reader(['en'], gpu=False)
 
         for page_num in range(len(doc)):
             page = doc[page_num]
-            # Render page as image at high resolution
-            mat = fitz.Matrix(2.5, 2.5)  # 2.5x zoom for clarity
-            pix = page.get_pixmap(matrix=mat)
+            mat  = fitz.Matrix(2.5, 2.5)
+            pix  = page.get_pixmap(matrix=mat)
 
-            # Save temp image
-            temp_img = f"outputs/temp_page_{page_num}.png"
             os.makedirs("outputs", exist_ok=True)
+            temp_img = f"outputs/temp_page_{page_num}.png"
             pix.save(temp_img)
 
-            # Run EasyOCR on the image
-            results   = reader.readtext(temp_img)
-            page_text = "\n".join([
-                r[1] for r in results if r[2] > 0.3
-            ])
-            all_text += page_text + "\n"
+            results = reader.readtext(temp_img)
 
-            # Clean up temp file
+            # Group by Y position — reconstruct rows
+            rows = {}
+            for bbox, text, conf in results:
+                if conf < 0.3:
+                    continue
+                y = int(bbox[0][1])
+                matched_row = None
+                for row_y in rows:
+                    if abs(row_y - y) < 25:
+                        matched_row = row_y
+                        break
+                if matched_row is None:
+                    rows[y] = []
+                    matched_row = y
+                rows[matched_row].append({
+                    "text": text,
+                    "x":    bbox[0][0]
+                })
+
+            # Build text row by row
+            page_text = ""
+            for row_y in sorted(rows.keys()):
+                row_items = sorted(
+                    rows[row_y], key=lambda r: r["x"]
+                )
+                row_text = "  ".join([
+                    item["text"] for item in row_items
+                ])
+                page_text += row_text + "\n"
+
+            all_text += page_text
+
             try:
                 os.remove(temp_img)
             except Exception:
                 pass
 
         doc.close()
-        print(f"Scanned PDF OCR — extracted {len(all_text)} characters")
+        print(f"Scanned PDF OCR — {len(all_text)} characters")
         return all_text.strip(), "handwritten"
-
     except ImportError:
         print("PyMuPDF not installed. Run: pip install pymupdf")
         return "", "unknown"
