@@ -569,6 +569,10 @@ with tab1:
                 for key in ['translated_report', 'translation_lang']:
                     if key in st.session_state:
                         del st.session_state[key]
+                for key in ['translated_report', 'translation_lang',
+                    'voice_audio_path', 'voice_spoken_text']:
+                    if key in st.session_state:
+                        del st.session_state[key]
                                             
 
                 # ── Patient and Doctor Info Card ─────────────────────────────────
@@ -1112,6 +1116,84 @@ with tab1:
                     No medicines detected — calendar reminders not available.
                 </div>
                 """, unsafe_allow_html=True)
+            
+
+            # ── Voice Output ──────────────────────────────────────
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown(
+                "<div class='section-header'>🔊 Voice Report</div>",
+                unsafe_allow_html=True
+            )
+
+            selected_lang = st.session_state.get(
+                'selected_language', 'English'
+            )
+
+            st.markdown(f"""
+            <div style='background:#1a2744;border:1px solid #2d4a7a;
+            border-radius:8px;padding:8px 12px;margin-bottom:10px;
+            color:#93c5fd;font-size:0.83rem;'>
+                🔊 Listen to your medicine report in
+                <strong>{selected_lang}</strong>.
+                Change language from the sidebar.
+            </div>
+            """, unsafe_allow_html=True)
+
+            generate_voice_btn = st.button(
+                "🔊 Generate Voice Report",
+                key="generate_voice"
+            )
+
+            if generate_voice_btn:
+                with st.spinner(
+                    f"Generating audio in {selected_lang}..."
+                ):
+                    try:
+                        from src.report_generator import \
+                            generate_voice_report
+
+                        audio_path, spoken_text = generate_voice_report(
+                            report,
+                            st.session_state.get('pres_entities', {}),
+                            language=selected_lang
+                        )
+
+                        st.session_state['voice_audio_path'] = audio_path
+                        st.session_state['voice_spoken_text'] = spoken_text
+                        st.success("✅ Audio generated!")
+
+                    except Exception as e:
+                        st.error(f"Voice generation failed: {e}")
+
+            # Show audio player if audio exists
+            if st.session_state.get('voice_audio_path'):
+                audio_path = st.session_state['voice_audio_path']
+
+                if os.path.exists(audio_path):
+                    with open(audio_path, "rb") as f:
+                        audio_bytes = f.read()
+
+                    st.audio(audio_bytes, format="audio/mp3")
+
+                    # Download button
+                    st.download_button(
+                        label="⬇️ Download Audio",
+                        data=audio_bytes,
+                        file_name=f"medicine_report_{selected_lang}.mp3",
+                        mime="audio/mp3",
+                        key="download_audio"
+                    )
+
+                    # Show spoken text
+                    with st.expander(
+                        "📄 View spoken text", expanded=False
+                    ):
+                        st.markdown(f"""
+                        <div style='color:#cbd5e1;font-size:0.85rem;
+                        line-height:1.8;'>
+                            {st.session_state.get('voice_spoken_text','')}
+                        </div>
+                        """, unsafe_allow_html=True)
             # ── Disclaimer ────────────────────────────────────────
             st.markdown("""
             <div class='disclaimer'>

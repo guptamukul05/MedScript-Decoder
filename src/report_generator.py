@@ -790,3 +790,163 @@ Respond ONLY with a valid JSON object in this exact format:
     except Exception as e:
         print(f"Translation error: {e}")
         return None
+def generate_voice_report(report, entities, language="English"):
+    """
+    Converts patient report to speech in selected language.
+    Uses gTTS — free, runs locally, no API needed.
+    """
+    from gtts import gTTS
+    import os
+
+    # Language code mapping for gTTS
+    lang_codes = {
+        "English":    "en",
+        "Hindi":      "hi",
+        "Bengali":    "bn",
+        "Tamil":      "ta",
+        "Telugu":     "te",
+        "Marathi":    "mr",
+        "Gujarati":   "gu",
+        "Kannada":    "kn",
+        "Malayalam":  "ml",
+        "Punjabi":    "pa"
+    }
+
+    lang_code = lang_codes.get(language, "en")
+
+    # Build the spoken report text
+    lines = []
+
+    # Check if we have translated content
+    translated = None
+    if language != "English":
+        try:
+            translated = translate_report(report, language)
+        except Exception:
+            pass
+
+    # Opening
+    if language == "English":
+        lines.append("Your medicine report is ready.")
+    elif language == "Hindi":
+        lines.append("आपकी दवाई की जानकारी तैयार है।")
+    else:
+        lines.append("Your medicine report is ready.")
+
+    # Patient name
+    patient = entities.get("patient_info", {})
+    if patient.get("name"):
+        if language == "English":
+            lines.append(f"Patient name: {patient['name']}.")
+        elif language == "Hindi":
+            lines.append(f"मरीज़ का नाम: {patient['name']}.")
+        else:
+            lines.append(f"Patient: {patient['name']}.")
+
+    # Medicines
+    medicines = report.get("medicines", [])
+    if medicines:
+        if language == "English":
+            lines.append(f"You have been prescribed {len(medicines)} medicines.")
+        elif language == "Hindi":
+            lines.append(f"आपको {len(medicines)} दवाइयाँ दी गई हैं।")
+        else:
+            lines.append(f"You have {len(medicines)} medicines.")
+
+        for idx, med in enumerate(medicines):
+            name      = med.get("name", "").title()
+            dosage    = med.get("dosage", "as prescribed")
+            frequency = med.get("frequency", "as directed")
+            duration  = med.get("duration", "as directed")
+            timing    = med.get("timing", [])
+
+            # Get translated content if available
+            t_med = None
+            if translated and idx < len(
+                translated.get("medicines", [])
+            ):
+                t_med = translated["medicines"][idx]
+
+            timing_str = ", ".join(timing) if timing else "as directed"
+
+            if language == "English":
+                lines.append(
+                    f"Medicine {idx+1}: {name}. "
+                    f"Take {dosage}, {frequency}. "
+                    f"Timing: {timing_str}. "
+                    f"Duration: {duration}. "
+                    f"Take with food."
+                )
+            elif language == "Hindi":
+                freq_hi = (
+                    t_med.get("frequency_translated", frequency)
+                    if t_med else frequency
+                )
+                dur_hi = (
+                    t_med.get("duration_translated", duration)
+                    if t_med else duration
+                )
+                timing_hi = ", ".join(
+                    t_med.get("timing_translated", timing)
+                    if t_med else timing
+                )
+                lines.append(
+                    f"दवाई नंबर {idx+1}: {name}। "
+                    f"{dosage} लें, {freq_hi}। "
+                    f"समय: {timing_hi}। "
+                    f"अवधि: {dur_hi}। "
+                    f"खाने के साथ लें।"
+                )
+            else:
+                lines.append(
+                    f"Medicine {idx+1}: {name}. "
+                    f"Dose: {dosage}. {frequency}. "
+                    f"Take at: {timing_str}. "
+                    f"For {duration}."
+                )
+
+    # Tests ordered
+    tests = report.get("tests_ordered", [])
+    if tests:
+        tests_str = ", ".join(tests)
+        if language == "English":
+            lines.append(
+                f"Your doctor has ordered these tests: {tests_str}."
+            )
+        elif language == "Hindi":
+            lines.append(
+                f"आपके डॉक्टर ने ये टेस्ट करवाने को कहा है: {tests_str}."
+            )
+        else:
+            lines.append(f"Tests ordered: {tests_str}.")
+
+    # Closing disclaimer
+    if language == "English":
+        lines.append(
+            "Please follow your doctor's instructions carefully. "
+            "This is an AI-generated summary. "
+            "Always consult your doctor for medical advice."
+        )
+    elif language == "Hindi":
+        lines.append(
+            "कृपया अपने डॉक्टर के निर्देशों का पालन करें। "
+            "यह एक AI द्वारा बनाई गई जानकारी है। "
+            "चिकित्सीय सलाह के लिए हमेशा अपने डॉक्टर से मिलें।"
+        )
+    else:
+        lines.append(
+            "Please follow your doctor's instructions carefully. "
+            "Always consult your doctor for medical advice."
+        )
+
+    # Combine all lines
+    full_text = " ".join(lines)
+
+    # Generate audio
+    os.makedirs("outputs", exist_ok=True)
+    audio_path = "outputs/medicine_report.mp3"
+
+    tts = gTTS(text=full_text, lang=lang_code, slow=False)
+    tts.save(audio_path)
+
+    return audio_path, full_text
