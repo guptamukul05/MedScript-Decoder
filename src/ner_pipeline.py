@@ -663,7 +663,7 @@ def check_prescription_authenticity(text, entities):
     """
     checks   = []
     score    = 0
-    max_score = 7
+    max_score = 6
 
     doctor_info  = entities.get("doctor_info",  {})
     patient_info = entities.get("patient_info", {})
@@ -719,23 +719,6 @@ def check_prescription_authenticity(text, entities):
             "item":   "Qualification",
             "status": "missing",
             "value":  "Not found",
-            "icon":   "⚠️"
-        })
-
-    # Check 4 — Clinic or hospital name
-    if doctor_info.get("clinic"):
-        checks.append({
-            "item":   "Clinic / Hospital",
-            "status": "found",
-            "value":  doctor_info["clinic"],
-            "icon":   "✅"
-        })
-        score += 1
-    else:
-        checks.append({
-            "item":   "Clinic / Hospital",
-            "status": "missing",
-            "value":  "Not mentioned",
             "icon":   "⚠️"
         })
 
