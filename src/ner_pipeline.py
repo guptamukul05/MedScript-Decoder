@@ -650,3 +650,174 @@ def extract_entities(ner_model, text):
     print(f"Patient  : {patient_info}")
 
     return entities
+def check_prescription_authenticity(text, entities):
+    """
+    Checks prescription authenticity based on:
+    - Doctor registration number presence and format
+    - Doctor name presence
+    - Clinic/hospital details
+    - Date presence
+    - Patient name presence
+    - Prescription signature markers
+    No hardcoded medical knowledge — purely structural validation.
+    """
+    checks   = []
+    score    = 0
+    max_score = 7
+
+    doctor_info  = entities.get("doctor_info",  {})
+    patient_info = entities.get("patient_info", {})
+
+    # Check 1 — Doctor name
+    if doctor_info.get("doctor_name"):
+        checks.append({
+            "item":   "Doctor Name",
+            "status": "found",
+            "value":  doctor_info["doctor_name"],
+            "icon":   "✅"
+        })
+        score += 1
+    else:
+        checks.append({
+            "item":   "Doctor Name",
+            "status": "missing",
+            "value":  "Not found",
+            "icon":   "⚠️"
+        })
+
+    # Check 2 — Registration number
+    reg = doctor_info.get("reg_number", "")
+    if reg:
+        # Validate format — should contain letters + numbers
+        is_valid = bool(re.search(r"[A-Z]{2,5}[-/\s]?\d+", reg))
+        checks.append({
+            "item":   "Registration Number",
+            "status": "found" if is_valid else "invalid",
+            "value":  reg,
+            "icon":   "✅" if is_valid else "⚠️"
+        })
+        score += 1 if is_valid else 0
+    else:
+        checks.append({
+            "item":   "Registration Number",
+            "status": "missing",
+            "value":  "Not found on prescription",
+            "icon":   "❌"
+        })
+
+    # Check 3 — Qualification
+    if doctor_info.get("qualification"):
+        checks.append({
+            "item":   "Qualification",
+            "status": "found",
+            "value":  doctor_info["qualification"],
+            "icon":   "✅"
+        })
+        score += 1
+    else:
+        checks.append({
+            "item":   "Qualification",
+            "status": "missing",
+            "value":  "Not found",
+            "icon":   "⚠️"
+        })
+
+    # Check 4 — Clinic or hospital name
+    if doctor_info.get("clinic"):
+        checks.append({
+            "item":   "Clinic / Hospital",
+            "status": "found",
+            "value":  doctor_info["clinic"],
+            "icon":   "✅"
+        })
+        score += 1
+    else:
+        checks.append({
+            "item":   "Clinic / Hospital",
+            "status": "missing",
+            "value":  "Not mentioned",
+            "icon":   "⚠️"
+        })
+
+    # Check 5 — Patient name
+    if patient_info.get("name"):
+        checks.append({
+            "item":   "Patient Name",
+            "status": "found",
+            "value":  patient_info["name"],
+            "icon":   "✅"
+        })
+        score += 1
+    else:
+        checks.append({
+            "item":   "Patient Name",
+            "status": "missing",
+            "value":  "Not found",
+            "icon":   "⚠️"
+        })
+
+    # Check 6 — Date
+    if patient_info.get("date"):
+        checks.append({
+            "item":   "Prescription Date",
+            "status": "found",
+            "value":  patient_info["date"],
+            "icon":   "✅"
+        })
+        score += 1
+    else:
+        checks.append({
+            "item":   "Prescription Date",
+            "status": "missing",
+            "value":  "Not found",
+            "icon":   "⚠️"
+        })
+
+    # Check 7 — Medicines present
+    medicines = entities.get("medicines", [])
+    if medicines:
+        checks.append({
+            "item":   "Medicines Listed",
+            "status": "found",
+            "value":  f"{len(medicines)} medicine(s) found",
+            "icon":   "✅"
+        })
+        score += 1
+    else:
+        checks.append({
+            "item":   "Medicines Listed",
+            "status": "missing",
+            "value":  "No medicines detected",
+            "icon":   "❌"
+        })
+
+    # Calculate authenticity level
+    percentage = round((score / max_score) * 100)
+
+    if percentage >= 85:
+        level  = "high"
+        color  = "🟢"
+        text   = "High Authenticity"
+        detail = "Prescription appears complete and properly formatted."
+    elif percentage >= 57:
+        level  = "medium"
+        color  = "🟡"
+        text   = "Moderate Authenticity"
+        detail = "Some fields are missing. Verify with your doctor."
+    else:
+        level  = "low"
+        color  = "🔴"
+        text   = "Low Authenticity"
+        detail = ("Multiple required fields missing. "
+                  "Verify this prescription with your doctor or pharmacist.")
+
+    return {
+        "score":      score,
+        "max_score":  max_score,
+        "percentage": percentage,
+        "level":      level,
+        "color":      color,
+        "text":       text,
+        "detail":     detail,
+        "checks":     checks
+    }

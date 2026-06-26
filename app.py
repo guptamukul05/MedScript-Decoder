@@ -602,6 +602,72 @@ with tab1:
                         {info_html}
                     </div>
                     """, unsafe_allow_html=True)
+                
+                # ── Prescription Authenticity ─────────────────────────
+                from src.ner_pipeline import check_prescription_authenticity
+                auth = check_prescription_authenticity(
+                    st.session_state.get('pres_ocr_text', ''),
+                    entities
+                )
+
+                with st.expander(
+                    f"{auth['color']} Prescription Authenticity — "
+                    f"{auth['text']} ({auth['percentage']}%)",
+                    expanded=False
+                ):
+                    # Progress bar
+                    st.progress(auth['percentage'] / 100)
+
+                    st.markdown(f"""
+                    <div style='color:#94a3b8;font-size:0.83rem;
+                    margin-bottom:12px;'>
+                        {auth['detail']}
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    # Checks table
+                    for check in auth['checks']:
+                        status_color = (
+                            "#86efac" if check['status'] == "found"   else
+                            "#fde68a" if check['status'] == "invalid" else
+                            "#fca5a5"
+                        )
+                        bg_color = (
+                            "#14291e" if check['status'] == "found"   else
+                            "#2d2500" if check['status'] == "invalid" else
+                            "#2d1515"
+                        )
+                        border_color = (
+                            "#14532d" if check['status'] == "found"   else
+                            "#92400e" if check['status'] == "invalid" else
+                            "#7f1d1d"
+                        )
+                        st.markdown(f"""
+                        <div style='background:{bg_color};
+                        border:1px solid {border_color};
+                        border-radius:8px;padding:8px 12px;
+                        margin-bottom:6px;display:flex;
+                        justify-content:space-between;
+                        align-items:center;'>
+                            <span style='color:{status_color};
+                            font-size:0.85rem;font-weight:500;'>
+                                {check['icon']} {check['item']}
+                            </span>
+                            <span style='color:#94a3b8;
+                            font-size:0.82rem;'>
+                                {check['value']}
+                            </span>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    st.markdown("""
+                    <div style='color:rgba(255,255,255,0.3);
+                    font-size:0.75rem;margin-top:8px;'>
+                        ⚠️ Authenticity check is based on structural
+                        completeness only. Always verify prescriptions
+                        with a licensed pharmacist.
+                    </div>
+                    """, unsafe_allow_html=True)
 
                 # ── Symptoms ──────────────────────────────────────────────────────
                 if entities.get('symptoms'):
