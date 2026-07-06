@@ -306,28 +306,145 @@ def load_models():
 # ── Sidebar ───────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("""
-    <div style='text-align:center; padding: 1rem 0;'>
-        <div style='font-size:3rem;'>🏥</div>
-        <div style='color:white; font-size:1.2rem; font-weight:700;'>MedScript</div>
-        <div style='color:rgba(255,255,255,0.5); font-size:0.8rem;'>Decoder v1.0</div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("---")
-    st.markdown("""
-    <div style='color:rgba(255,255,255,0.6); font-size:0.85rem; padding: 0.5rem 0;'>
-        <b style='color:white'>How to use:</b><br><br>
-        📋 <b style='color:#a78bfa'>Dashboard 1</b><br>
-        Upload prescription image or paste text<br><br>
-        🧪 <b style='color:#a78bfa'>Dashboard 2</b><br>
-        Upload medical report for analysis<br><br>
-        🔄 <b style='color:#a78bfa'>Combined</b><br>
-        Upload both for complete analysis
+    <div style='text-align:center;padding:1rem 0;'>
+        <div style='font-size:2.5rem;'>🏥</div>
+        <div style='color:white;font-size:1.1rem;
+        font-weight:700;'>MedScript</div>
+        <div style='color:rgba(255,255,255,0.4);
+        font-size:0.75rem;'>Decoder v1.0</div>
     </div>
     """, unsafe_allow_html=True)
 
+    st.markdown("---")
+
+    # ── Patient Portal Login/Register ─────────────────────────────
+    from src.patient_portal import (
+        init_portal_db, register_user, login_user,
+        update_profile, save_medical_record,
+        get_user_records, get_user_stats, delete_record
+    )
+    init_portal_db()
+
+    if st.session_state.get('portal_user'):
+        user = st.session_state['portal_user']
+
+        # Logged in view
+        st.markdown(f"""
+        <div style='background:#1a2744;border:1px solid #2d4a7a;
+        border-radius:10px;padding:10px 12px;margin-bottom:8px;'>
+            <div style='color:#a5b4fc;font-size:0.85rem;
+            font-weight:600;'>👤 {user['full_name']}</div>
+            <div style='color:#64748b;font-size:0.75rem;'>
+            {user['email']}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        if st.button("📁 My Patient Portal",
+                     key="open_portal",
+                     use_container_width=True):
+            st.session_state['show_portal'] = True
+
+        if st.button("🚪 Logout",
+                     key="logout_btn",
+                     use_container_width=True):
+            st.session_state['portal_user'] = None
+            st.session_state['show_portal'] = False
+            st.rerun()
+
+    else:
+        # Not logged in
+        st.markdown("""
+        <div style='color:rgba(255,255,255,0.6);font-size:0.82rem;
+        margin-bottom:8px;'>
+            🔐 Patient Portal
+        </div>
+        """, unsafe_allow_html=True)
+
+        portal_action = st.radio(
+            "Action",
+            ["Login", "Register"],
+            horizontal=True,
+            key="portal_action",
+            label_visibility="collapsed"
+        )
+
+        if portal_action == "Login":
+            login_email = st.text_input(
+                "Email", key="login_email",
+                placeholder="your@email.com"
+            )
+            login_pass = st.text_input(
+                "Password", key="login_pass",
+                type="password", placeholder="Password"
+            )
+            if st.button("Login", key="login_btn",
+                         use_container_width=True):
+                if login_email and login_pass:
+                    success, user, msg = login_user(
+                        login_email, login_pass
+                    )
+                    if success:
+                        st.session_state['portal_user']  = user
+                        st.session_state['show_portal']  = False
+                        st.success(f"Welcome {user['full_name']}!")
+                        st.rerun()
+                    else:
+                        st.error(msg)
+                else:
+                    st.warning("Enter email and password.")
+
+        else:  # Register
+            reg_name  = st.text_input(
+                "Full Name", key="reg_name",
+                placeholder="Your full name"
+            )
+            reg_email = st.text_input(
+                "Email", key="reg_email",
+                placeholder="your@email.com"
+            )
+            reg_pass  = st.text_input(
+                "Password", key="reg_pass",
+                type="password", placeholder="Min 6 characters"
+            )
+            reg_age   = st.text_input(
+                "Age", key="reg_age", placeholder="25"
+            )
+            reg_gender = st.selectbox(
+                "Gender", ["", "Male", "Female", "Other"],
+                key="reg_gender"
+            )
+            reg_blood = st.selectbox(
+                "Blood Group",
+                ["", "A+", "A-", "B+", "B-",
+                 "O+", "O-", "AB+", "AB-"],
+                key="reg_blood"
+            )
+            reg_phone = st.text_input(
+                "Phone", key="reg_phone",
+                placeholder="10-digit number"
+            )
+
+            if st.button("Register", key="reg_btn",
+                         use_container_width=True):
+                if reg_name and reg_email and reg_pass:
+                    if len(reg_pass) < 6:
+                        st.error("Password must be at least 6 characters.")
+                    else:
+                        success, msg = register_user(
+                            reg_name, reg_email, reg_pass,
+                            reg_age, reg_gender,
+                            reg_blood, reg_phone
+                        )
+                        if success:
+                            st.success(msg)
+                        else:
+                            st.error(msg)
+                else:
+                    st.warning("Name, email and password are required.")
 
     st.markdown("---")
+
+    # Language selector
     st.markdown("""
     <div style='color:rgba(255,255,255,0.7);font-size:0.85rem;
     font-weight:600;margin-bottom:8px;'>
@@ -354,23 +471,20 @@ with st.sidebar:
         <div style='background:#1a2744;border:1px solid #2d4a7a;
         border-radius:6px;padding:6px 10px;
         color:#93c5fd;font-size:0.78rem;'>
-            🌐 Output will be shown in {selected_language}
+            🌐 Output in {selected_language}
         </div>
         """, unsafe_allow_html=True)
 
-    # Store in session state for access across dashboards
     st.session_state['selected_language'] = selected_language
 
     st.markdown("---")
-    
-    st.markdown("---")
     st.markdown("""
-    <div style='color:rgba(255,255,255,0.4); font-size:0.75rem; text-align:center;'>
+    <div style='color:rgba(255,255,255,0.3);font-size:0.72rem;
+    text-align:center;'>
         ⚠️ For informational purposes only.<br>
         Always consult a qualified doctor.
     </div>
     """, unsafe_allow_html=True)
-
 
 
 # ── Main header ───────────────────────────────────────────────────
