@@ -486,6 +486,476 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
+# ── Patient Portal Page ───────────────────────────────────────────
+if st.session_state.get('show_portal') and \
+   st.session_state.get('portal_user'):
+
+    user  = st.session_state['portal_user']
+    stats = get_user_stats(user['id'])
+
+    # Portal header
+    st.markdown(f"""
+    <div style='background:linear-gradient(135deg,#1e2130,#1a2744);
+    border:1px solid #2d4a7a;border-radius:16px;
+    padding:1.5rem 2rem;margin-bottom:1.5rem;'>
+        <div style='display:flex;justify-content:space-between;
+        align-items:center;'>
+            <div>
+                <div style='color:#a5b4fc;font-size:1.4rem;
+                font-weight:700;'>
+                    👤 {user['full_name']}
+                </div>
+                <div style='color:#64748b;font-size:0.85rem;
+                margin-top:2px;'>{user['email']}</div>
+            </div>
+            <div style='text-align:right;'>
+                <div style='color:#94a3b8;font-size:0.8rem;'>
+                    Blood Group
+                </div>
+                <div style='color:#f1f5f9;font-size:1.2rem;
+                font-weight:700;'>
+                    {user.get('blood_group','Not set') or 'Not set'}
+                </div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Portal tabs
+    p_tab1, p_tab2, p_tab3 = st.tabs([
+        "📊 Overview",
+        "📁 My Records",
+        "⚙️ Profile"
+    ])
+
+    # ── Tab 1: Overview ───────────────────────────────────────────
+    with p_tab1:
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # Stats cards
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            st.metric("Total Records",  stats['total'])
+        with c2:
+            st.metric("Prescriptions",  stats['prescriptions'])
+        with c3:
+            st.metric("Lab Reports",    stats['reports'])
+        with c4:
+            st.metric("Test Results",   stats['tests'])
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # Patient info card
+        st.markdown("""
+        <div class='section-header'>👤 Patient Information</div>
+        """, unsafe_allow_html=True)
+
+        info_cols = st.columns(3)
+        fields = [
+            ("Age",          user.get('age',         'Not set')),
+            ("Gender",       user.get('gender',      'Not set')),
+            ("Blood Group",  user.get('blood_group', 'Not set')),
+            ("Phone",        user.get('phone',       'Not set')),
+            ("Last Visit",   stats['last_visit']),
+        ]
+        for i, (label, value) in enumerate(fields):
+            with info_cols[i % 3]:
+                st.markdown(f"""
+                <div class='dashboard-card'
+                style='padding:0.8rem 1rem;'>
+                    <div style='color:#64748b;font-size:0.75rem;
+                    text-transform:uppercase;
+                    letter-spacing:0.05em;'>
+                        {label}
+                    </div>
+                    <div style='color:#f1f5f9;font-size:1rem;
+                    font-weight:600;margin-top:2px;'>
+                        {value or 'Not set'}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+        # Recent records
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("""
+        <div class='section-header'>🕐 Recent Records</div>
+        """, unsafe_allow_html=True)
+
+        recent = get_user_records(user['id'], sort="Newest First")[:5]
+        if recent:
+            for rec in recent:
+                type_icon = (
+                    "📋" if rec['record_type'] == "Prescription" else
+                    "🧪" if rec['record_type'] == "Lab Report"  else
+                    "🔬"
+                )
+                type_color = (
+                    "#a5b4fc" if rec['record_type'] == "Prescription" else
+                    "#6ee7b7" if rec['record_type'] == "Lab Report"   else
+                    "#fde68a"
+                )
+                st.markdown(f"""
+                <div class='dashboard-card'
+                style='padding:0.8rem 1rem;margin-bottom:6px;'>
+                    <div style='display:flex;
+                    justify-content:space-between;
+                    align-items:center;'>
+                        <div>
+                            <span style='font-size:0.9rem;
+                            color:{type_color};font-weight:500;'>
+                                {type_icon} {rec['record_name']}
+                            </span>
+                            <span style='color:#64748b;
+                            font-size:0.78rem;margin-left:8px;'>
+                                {rec['record_type']}
+                            </span>
+                        </div>
+                        <div style='color:#64748b;font-size:0.78rem;'>
+                            📅 {rec['visit_date']}
+                        </div>
+                    </div>
+                    <div style='color:#94a3b8;font-size:0.78rem;
+                    margin-top:4px;'>
+                        👨‍⚕️ {rec['doctor_name'] or 'N/A'}
+                        &nbsp;|&nbsp;
+                        🏥 {rec['clinic_name'] or 'N/A'}
+                        &nbsp;|&nbsp;
+                        📝 {rec['reason'] or 'N/A'}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div style='color:rgba(255,255,255,0.3);
+            font-size:0.9rem;text-align:center;padding:2rem;'>
+                No records yet. Add your first record in My Records tab.
+            </div>
+            """, unsafe_allow_html=True)
+
+    # ── Tab 2: My Records ─────────────────────────────────────────
+    with p_tab2:
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        rec_left, rec_right = st.columns([1, 1.5], gap="large")
+
+        with rec_left:
+            st.markdown("""
+            <div class='section-header'>➕ Add New Record</div>
+            """, unsafe_allow_html=True)
+
+            rec_name = st.text_input(
+                "Record Name",
+                placeholder="e.g. Fever Prescription Jan 2026",
+                key="rec_name"
+            )
+            rec_type = st.selectbox(
+                "Record Type",
+                ["Prescription", "Lab Report", "Test Result", "Other"],
+                key="rec_type"
+            )
+            rec_date = st.date_input(
+                "Visit Date",
+                value=datetime.today(),
+                key="rec_date"
+            )
+            rec_doctor = st.text_input(
+                "Doctor Name",
+                placeholder="Dr. Name",
+                key="rec_doctor"
+            )
+            rec_clinic = st.text_input(
+                "Clinic / Hospital",
+                placeholder="Clinic or hospital name",
+                key="rec_clinic"
+            )
+            rec_reason = st.text_input(
+                "Reason for Visit",
+                placeholder="e.g. Fever, Routine checkup, Diabetes followup",
+                key="rec_reason"
+            )
+            rec_file = st.file_uploader(
+                "Upload Document (optional)",
+                type=["pdf", "jpg", "jpeg", "png"],
+                key="rec_file"
+            )
+            rec_notes = st.text_area(
+                "Notes (optional)",
+                placeholder="Any additional notes...",
+                height=80,
+                key="rec_notes"
+            )
+
+            if st.button("💾 Save Record",
+                         key="save_rec_btn",
+                         use_container_width=True):
+                if rec_name.strip() and rec_reason.strip():
+                    file_bytes = None
+                    file_ext   = ".pdf"
+                    if rec_file:
+                        file_bytes = rec_file.getvalue()
+                        file_ext   = os.path.splitext(
+                            rec_file.name
+                        )[1] or ".pdf"
+
+                    save_medical_record(
+                        user_id     = user['id'],
+                        record_name = rec_name,
+                        record_type = rec_type,
+                        visit_date  = rec_date.strftime("%Y-%m-%d"),
+                        doctor_name = rec_doctor,
+                        clinic_name = rec_clinic,
+                        reason      = rec_reason,
+                        file_bytes  = file_bytes,
+                        file_ext    = file_ext,
+                        notes       = rec_notes
+                    )
+                    st.success(f"✅ {rec_name} saved successfully!")
+                    st.rerun()
+                else:
+                    st.warning("Record name and reason are required.")
+
+        with rec_right:
+            st.markdown("""
+            <div class='section-header'>🔍 Search Records</div>
+            """, unsafe_allow_html=True)
+
+            s1, s2, s3 = st.columns([2, 1.5, 1.5])
+            with s1:
+                search_query = st.text_input(
+                    "Search",
+                    placeholder="Name, doctor, reason...",
+                    key="search_query",
+                    label_visibility="collapsed"
+                )
+            with s2:
+                filter_type = st.selectbox(
+                    "Type",
+                    ["All", "Prescription",
+                     "Lab Report", "Test Result", "Other"],
+                    key="filter_type",
+                    label_visibility="collapsed"
+                )
+            with s3:
+                sort_order = st.selectbox(
+                    "Sort",
+                    ["Newest First", "Oldest First"],
+                    key="sort_order",
+                    label_visibility="collapsed"
+                )
+
+            records = get_user_records(
+                user['id'],
+                search      = search_query,
+                record_type = filter_type,
+                sort        = sort_order
+            )
+
+            st.markdown(f"""
+            <div style='color:#64748b;font-size:0.8rem;
+            margin-bottom:8px;'>
+                {len(records)} record{'s' if len(records)!=1 else ''} found
+            </div>
+            """, unsafe_allow_html=True)
+
+            if not records:
+                st.markdown("""
+                <div style='color:rgba(255,255,255,0.3);
+                font-size:0.85rem;text-align:center;padding:2rem;'>
+                    No records found.
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                for rec in records:
+                    type_icon = (
+                        "📋" if rec['record_type'] == "Prescription" else
+                        "🧪" if rec['record_type'] == "Lab Report"   else
+                        "🔬" if rec['record_type'] == "Test Result"  else
+                        "📄"
+                    )
+                    type_color = (
+                        "#a5b4fc" if rec['record_type'] == "Prescription" else
+                        "#6ee7b7" if rec['record_type'] == "Lab Report"   else
+                        "#fde68a" if rec['record_type'] == "Test Result"  else
+                        "#94a3b8"
+                    )
+
+                    with st.expander(
+                        f"{type_icon} {rec['record_name']} — {rec['visit_date']}",
+                        expanded=False
+                    ):
+                        d1, d2 = st.columns(2)
+                        with d1:
+                            st.markdown(f"""
+                            <div style='font-size:0.83rem;
+                            color:#cbd5e1;line-height:1.8;'>
+                                <b style='color:#94a3b8;'>Type:</b>
+                                <span style='color:{type_color};'>
+                                {rec['record_type']}</span><br>
+                                <b style='color:#94a3b8;'>Doctor:</b>
+                                {rec['doctor_name'] or 'N/A'}<br>
+                                <b style='color:#94a3b8;'>Clinic:</b>
+                                {rec['clinic_name'] or 'N/A'}
+                            </div>
+                            """, unsafe_allow_html=True)
+                        with d2:
+                            st.markdown(f"""
+                            <div style='font-size:0.83rem;
+                            color:#cbd5e1;line-height:1.8;'>
+                                <b style='color:#94a3b8;'>Date:</b>
+                                {rec['visit_date']}<br>
+                                <b style='color:#94a3b8;'>Reason:</b>
+                                {rec['reason'] or 'N/A'}<br>
+                                <b style='color:#94a3b8;'>Notes:</b>
+                                {rec['notes'] or 'N/A'}
+                            </div>
+                            """, unsafe_allow_html=True)
+
+                        # Action buttons
+                        btn1, btn2, btn3 = st.columns(3)
+
+                        # View/Download file
+                        with btn1:
+                            if rec['file_path'] and \
+                               os.path.exists(rec['file_path']):
+                                with open(rec['file_path'], "rb") as f:
+                                    file_bytes = f.read()
+                                ext = os.path.splitext(
+                                    rec['file_path']
+                                )[1]
+                                mime = (
+                                    "application/pdf"
+                                    if ext == ".pdf"
+                                    else "image/jpeg"
+                                )
+                                st.download_button(
+                                    "⬇️ Download",
+                                    data      = file_bytes,
+                                    file_name = f"{rec['record_name']}{ext}",
+                                    mime      = mime,
+                                    key       = f"dl_{rec['id']}"
+                                )
+
+                        # Open in analyzer
+                        with btn2:
+                            if rec['file_path'] and \
+                               os.path.exists(rec['file_path']):
+                                if rec['record_type'] == "Prescription":
+                                    if st.button(
+                                        "📋 Analyze",
+                                        key=f"analyze_{rec['id']}"
+                                    ):
+                                        with open(
+                                            rec['file_path'], "rb"
+                                        ) as f:
+                                            file_data = f.read()
+                                        st.session_state[
+                                            'portal_analyze_file'
+                                        ] = file_data
+                                        st.session_state[
+                                            'portal_analyze_type'
+                                        ] = "prescription"
+                                        st.session_state[
+                                            'show_portal'
+                                        ] = False
+                                        st.rerun()
+
+                                elif rec['record_type'] == "Lab Report":
+                                    if st.button(
+                                        "🧪 Analyze",
+                                        key=f"analyze_{rec['id']}"
+                                    ):
+                                        with open(
+                                            rec['file_path'], "rb"
+                                        ) as f:
+                                            file_data = f.read()
+                                        st.session_state[
+                                            'portal_analyze_file'
+                                        ] = file_data
+                                        st.session_state[
+                                            'portal_analyze_type'
+                                        ] = "report"
+                                        st.session_state[
+                                            'show_portal'
+                                        ] = False
+                                        st.rerun()
+
+                        # Delete
+                        with btn3:
+                            if st.button(
+                                "🗑️ Delete",
+                                key=f"del_{rec['id']}"
+                            ):
+                                delete_record(rec['id'], user['id'])
+                                st.rerun()
+
+    # ── Tab 3: Profile ────────────────────────────────────────────
+    with p_tab3:
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("""
+        <div class='section-header'>⚙️ Edit Profile</div>
+        """, unsafe_allow_html=True)
+
+        prof_cols = st.columns(2)
+        with prof_cols[0]:
+            p_name = st.text_input(
+                "Full Name",
+                value=user.get('full_name', ''),
+                key="p_name"
+            )
+            p_age = st.text_input(
+                "Age",
+                value=user.get('age', ''),
+                key="p_age"
+            )
+            p_phone = st.text_input(
+                "Phone",
+                value=user.get('phone', ''),
+                key="p_phone"
+            )
+
+        with prof_cols[1]:
+            gender_options = ["", "Male", "Female", "Other"]
+            p_gender = st.selectbox(
+                "Gender",
+                gender_options,
+                index=gender_options.index(user.get('gender',''))
+                      if user.get('gender') in gender_options else 0,
+                key="p_gender"
+            )
+            blood_options = ["", "A+", "A-", "B+", "B-",
+                             "O+", "O-", "AB+", "AB-"]
+            p_blood = st.selectbox(
+                "Blood Group",
+                blood_options,
+                index=blood_options.index(user.get('blood_group',''))
+                      if user.get('blood_group') in blood_options else 0,
+                key="p_blood"
+            )
+
+        if st.button("💾 Save Profile",
+                     key="save_profile_btn"):
+            update_profile(
+                user['id'], p_name, p_age,
+                p_gender, p_blood, p_phone
+            )
+            st.session_state['portal_user'].update({
+                'full_name':   p_name,
+                'age':         p_age,
+                'gender':      p_gender,
+                'blood_group': p_blood,
+                'phone':       p_phone
+            })
+            st.success("✅ Profile updated successfully!")
+            st.rerun()
+
+    # Back button
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("← Back to MedScript Decoder",
+                 key="back_to_main"):
+        st.session_state['show_portal'] = False
+        st.rerun()
+
+    st.stop()  # Stop rendering main app when portal is open
 
 # ── Main header ───────────────────────────────────────────────────
 st.markdown("""
@@ -640,6 +1110,17 @@ with tab1:
         )
         
     with right:
+        # Auto-load file from patient portal
+        if st.session_state.get('portal_analyze_file') and \
+           st.session_state.get('portal_analyze_type') == "prescription":
+            st.markdown("""
+            <div style='background:#14291e;border:1px solid #14532d;
+            border-radius:8px;padding:8px 12px;margin-bottom:8px;
+            color:#86efac;font-size:0.83rem;'>
+                📋 File loaded from Patient Portal — click Analyze
+            </div>
+            """, unsafe_allow_html=True)
+        
         if analyze_btn:
             if not prescription_text or not prescription_text.strip():
                 st.error("Please upload a file and extract text, or paste prescription text first.")
@@ -1437,6 +1918,16 @@ with tab2:
         )
     
     with right2:
+        # Auto-load file from patient portal
+        if st.session_state.get('portal_analyze_file') and \
+           st.session_state.get('portal_analyze_type') == "report":
+            st.markdown("""
+            <div style='background:#14291e;border:1px solid #14532d;
+            border-radius:8px;padding:8px 12px;margin-bottom:8px;
+            color:#86efac;font-size:0.83rem;'>
+                🧪 Report loaded from Patient Portal — click Analyze
+            </div>
+            """, unsafe_allow_html=True)
         if analyze_report_btn:
             for key in ['ai_symptoms', 'ai_diseases']:
                 if key in st.session_state:
