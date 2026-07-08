@@ -368,49 +368,113 @@ with st.sidebar:
             label_visibility="collapsed"
         )
 
+        # Login method selector
+        login_method = st.radio(
+            "Login with",
+            ["Email", "Mobile Number"],
+            horizontal=True,
+            key="login_method_sel"
+        )
+
         if portal_action == "Login":
-            login_email = st.text_input(
-                "Email", key="login_email",
-                placeholder="your@email.com"
-            )
+            if login_method == "Email":
+                login_id = st.text_input(
+                    "Email",
+                    key="login_email",
+                    placeholder="your@email.com"
+                )
+                login_type = "email"
+            else:
+                login_id = st.text_input(
+                    "Mobile Number",
+                    key="login_phone",
+                    placeholder="10-digit mobile number"
+                )
+                login_type = "phone"
+
             login_pass = st.text_input(
-                "Password", key="login_pass",
-                type="password", placeholder="Password"
+                "Password",
+                key="login_pass",
+                type="password",
+                placeholder="Password"
             )
+
             if st.button("Login", key="login_btn",
                          use_container_width=True):
-                if login_email and login_pass:
+                if login_id and login_pass:
                     success, user, msg = login_user(
-                        login_email, login_pass
+                        login_id, login_type, login_pass
                     )
                     if success:
-                        st.session_state['portal_user']  = user
-                        st.session_state['show_portal']  = False
+                        st.session_state['portal_user'] = user
+                        st.session_state['show_portal'] = False
                         st.success(f"Welcome {user['full_name']}!")
                         st.rerun()
                     else:
                         st.error(msg)
                 else:
-                    st.warning("Enter email and password.")
+                    st.warning("Enter credentials.")
 
         else:  # Register
-            reg_name  = st.text_input(
-                "Full Name", key="reg_name",
+            reg_name = st.text_input(
+                "Full Name",
+                key="reg_name",
                 placeholder="Your full name"
             )
-            reg_email = st.text_input(
-                "Email", key="reg_email",
-                placeholder="your@email.com"
+
+            if login_method == "Email":
+                reg_id   = st.text_input(
+                    "Email",
+                    key="reg_email",
+                    placeholder="your@email.com"
+                )
+                reg_type = "email"
+            else:
+                reg_id   = st.text_input(
+                    "Mobile Number",
+                    key="reg_phone",
+                    placeholder="10-digit mobile number"
+                )
+                reg_type = "phone"
+
+            reg_pass = st.text_input(
+                "Password",
+                key="reg_pass",
+                type="password",
+                placeholder="Min 6 characters"
             )
-            reg_pass  = st.text_input(
-                "Password", key="reg_pass",
-                type="password", placeholder="Min 6 characters"
+
+            # Date of birth — calendar picker
+            max_dob = date.today().replace(
+                year=date.today().year - 1
             )
-            reg_age   = st.text_input(
-                "Age", key="reg_age", placeholder="25"
+            min_dob = date.today().replace(
+                year=date.today().year - 120
             )
+
+            reg_dob = st.date_input(
+                "Date of Birth",
+                value=date(2000, 1, 1),
+                min_value=min_dob,
+                max_value=max_dob,
+                key="reg_dob"
+            )
+
+            # Show calculated age
+            if reg_dob:
+                from src.patient_portal import calculate_age
+                calc_age = calculate_age(reg_dob.strftime("%Y-%m-%d"))
+                if calc_age is not None:
+                    st.markdown(f"""
+                    <div style='color:#86efac;font-size:0.78rem;
+                    margin-top:-8px;margin-bottom:4px;'>
+                        Age: {calc_age} years
+                    </div>
+                    """, unsafe_allow_html=True)
+
             reg_gender = st.selectbox(
-                "Gender", ["", "Male", "Female", "Other"],
+                "Gender",
+                ["", "Male", "Female", "Other"],
                 key="reg_gender"
             )
             reg_blood = st.selectbox(
@@ -419,29 +483,26 @@ with st.sidebar:
                  "O+", "O-", "AB+", "AB-"],
                 key="reg_blood"
             )
-            reg_phone = st.text_input(
-                "Phone", key="reg_phone",
-                placeholder="10-digit number"
-            )
 
             if st.button("Register", key="reg_btn",
                          use_container_width=True):
-                if reg_name and reg_email and reg_pass:
-                    if len(reg_pass) < 6:
-                        st.error("Password must be at least 6 characters.")
+                if reg_name and reg_id and reg_pass:
+                    success, msg = register_user(
+                        full_name   = reg_name,
+                        login_id    = reg_id,
+                        login_type  = reg_type,
+                        password    = reg_pass,
+                        dob_str     = reg_dob.strftime("%Y-%m-%d")
+                                      if reg_dob else "",
+                        gender      = reg_gender,
+                        blood_group = reg_blood
+                    )
+                    if success:
+                        st.success(msg)
                     else:
-                        success, msg = register_user(
-                            reg_name, reg_email, reg_pass,
-                            reg_age, reg_gender,
-                            reg_blood, reg_phone
-                        )
-                        if success:
-                            st.success(msg)
-                        else:
-                            st.error(msg)
+                        st.error(msg)
                 else:
-                    st.warning("Name, email and password are required.")
-
+                    st.warning("Name, contact and password required.")
     st.markdown("---")
 
     # Language selector
@@ -902,60 +963,102 @@ if st.session_state.get('show_portal') and \
                 value=user.get('full_name', ''),
                 key="p_name"
             )
-            p_age = st.text_input(
-                "Age",
-                value=user.get('age', ''),
-                key="p_age"
+            p_email = st.text_input(
+                "Email",
+                value=user.get('email', '') or '',
+                key="p_email",
+                placeholder="your@email.com"
             )
             p_phone = st.text_input(
-                "Phone",
-                value=user.get('phone', ''),
-                key="p_phone"
+                "Mobile Number",
+                value=user.get('phone', '') or '',
+                key="p_phone",
+                placeholder="10-digit mobile number"
             )
 
         with prof_cols[1]:
+            # DOB picker
+            current_dob = user.get('dob', '')
+            if current_dob:
+                try:
+                    default_dob = datetime.strptime(
+                        current_dob, "%Y-%m-%d"
+                    ).date()
+                except Exception:
+                    default_dob = date(2000, 1, 1)
+            else:
+                default_dob = date(2000, 1, 1)
+
+            p_dob = st.date_input(
+                "Date of Birth",
+                value=default_dob,
+                min_value=date(
+                    date.today().year - 120, 1, 1
+                ),
+                max_value=date(
+                    date.today().year - 1, 12, 31
+                ),
+                key="p_dob"
+            )
+
+            # Show calculated age
+            if p_dob:
+                calc_age = calculate_age(
+                    p_dob.strftime("%Y-%m-%d")
+                )
+                if calc_age:
+                    st.markdown(f"""
+                    <div style='color:#86efac;font-size:0.82rem;'>
+                        Age: {calc_age} years
+                    </div>
+                    """, unsafe_allow_html=True)
+
             gender_options = ["", "Male", "Female", "Other"]
             p_gender = st.selectbox(
                 "Gender",
                 gender_options,
-                index=gender_options.index(user.get('gender',''))
-                      if user.get('gender') in gender_options else 0,
+                index=gender_options.index(
+                    user.get('gender', '')
+                ) if user.get('gender') in gender_options else 0,
                 key="p_gender"
             )
-            blood_options = ["", "A+", "A-", "B+", "B-",
-                             "O+", "O-", "AB+", "AB-"]
+            blood_options = [
+                "", "A+", "A-", "B+", "B-",
+                "O+", "O-", "AB+", "AB-"
+            ]
             p_blood = st.selectbox(
                 "Blood Group",
                 blood_options,
-                index=blood_options.index(user.get('blood_group',''))
-                      if user.get('blood_group') in blood_options else 0,
+                index=blood_options.index(
+                    user.get('blood_group', '')
+                ) if user.get('blood_group') in blood_options else 0,
                 key="p_blood"
             )
 
-        if st.button("💾 Save Profile",
-                     key="save_profile_btn"):
-            update_profile(
-                user['id'], p_name, p_age,
-                p_gender, p_blood, p_phone
-            )
-            st.session_state['portal_user'].update({
-                'full_name':   p_name,
-                'age':         p_age,
-                'gender':      p_gender,
-                'blood_group': p_blood,
-                'phone':       p_phone
-            })
-            st.success("✅ Profile updated successfully!")
-            st.rerun()
-
-    # Back button
-    st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("← Back to MedScript Decoder",
-                 key="back_to_main"):
-        st.session_state['show_portal'] = False
-        st.rerun()
-
-    st.stop()  # Stop rendering main app when portal is open
+        if st.button("💾 Save Profile", key="save_profile_btn"):
+            # Validate email if provided
+            if p_email and not is_valid_email(p_email):
+                st.error("Invalid email format.")
+            elif p_phone and not is_valid_phone(p_phone):
+                st.error("Invalid phone number format.")
+            else:
+                success, new_age = update_profile(
+                    user['id'], p_name,
+                    p_dob.strftime("%Y-%m-%d") if p_dob else "",
+                    p_gender, p_blood, p_phone, p_email
+                )
+                st.session_state['portal_user'].update({
+                    'full_name':   p_name,
+                    'dob':         p_dob.strftime("%Y-%m-%d")
+                                   if p_dob else "",
+                    'age':         new_age,
+                    'gender':      p_gender,
+                    'blood_group': p_blood,
+                    'phone':       p_phone,
+                    'email':       p_email
+                })
+                st.success("Profile updated successfully!")
+                st.rerun()
 
 # ── Main header ───────────────────────────────────────────────────
 st.markdown("""
