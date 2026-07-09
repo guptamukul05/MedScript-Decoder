@@ -235,3 +235,34 @@ data/raw/*.pdf
 # Python cache
 __pycache__/
 *.pyc
+
+# Debug files
+debug_*.py
+test_extraction.py
+fix.py
+
+# Generated output files
+outputs/extracted_text.txt
+outputs/final_report.json
+outputs/medicine_reminders.ics
+outputs/*.mp3
+outputs/*.ics
+outputs/*.txt
+outputs/*.json
+outputs/temp_*.png
+
+# Patient uploaded files
+data/patient_uploads/
+
+# Database
+data/medscript.db
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# Model files
+results/models/
+*.bin
+*.safetensors
+*.pt
+*.pth
